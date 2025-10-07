@@ -1,0 +1,1631 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบจัดการร้านยา</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;700&family=Sarabun:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <!-- Barcode Scanner Library -->
+    <script type="text/javascript" src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
+    <style>
+        body { font-family: 'Sarabun', sans-serif; }
+        h1, h2, h3, .font-kanit { font-family: 'Kanit', sans-serif; }
+        .page { display: none; }
+        .page.active { display: block; animation: fadeIn 0.5s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .nav-link.active { background-color: #ecfdf5; color: #059669; font-weight: bold; }
+        .search-results { max-height: 200px; overflow-y: auto; }
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #10b981; border-radius: 50%; width: 48px; height: 48px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .search-clear-btn { position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); cursor: pointer; color: #9ca3af; }
+        .dashboard-card { background-color: white; border-radius: 0.5rem; box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px 0 rgba(0,0,0,0.06); padding: 1.5rem; }
+        .filter-btn.active { background-color: #059669; color: white; }
+    </style>
+</head>
+<body class="bg-slate-100">
+
+    <!-- Global Loader -->
+    <div id="global-loader" class="fixed inset-0 bg-white bg-opacity-75 flex items-center justify-center z-50 hidden">
+        <div class="loader"></div>
+    </div>
+
+    <!-- Custom Alert Modal -->
+    <div id="custom-alert-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-11/12 md:w-1/3">
+            <p id="custom-alert-message" class="text-slate-700 mb-4"></p>
+            <button id="custom-alert-close" class="w-full bg-emerald-600 text-white py-2 rounded-lg hover:bg-emerald-700">ตกลง</button>
+        </div>
+    </div>
+    
+    <!-- Custom Confirmation Modal -->
+    <div id="custom-confirm-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-11/12 md:w-1/3">
+            <h3 id="custom-confirm-title" class="font-bold text-lg mb-2 text-slate-800">ยืนยันการกระทำ</h3>
+            <p id="custom-confirm-message" class="text-slate-700 mb-4"></p>
+            <div class="flex justify-end gap-4">
+                <button id="custom-confirm-cancel" class="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300">ยกเลิก</button>
+                <button id="custom-confirm-ok" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">ยืนยัน</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Camera Modal -->
+    <div id="camera-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-11/12 md:w-1/2">
+            <h3 class="font-bold text-lg mb-4">ถ่ายรูปยา</h3>
+            <div class="relative">
+                <video id="camera-video" class="w-full h-auto bg-slate-200 rounded" autoplay playsinline></video>
+                <canvas id="camera-canvas" class="hidden"></canvas>
+            </div>
+            <img id="photo-preview" class="hidden w-full h-auto mt-2 rounded" alt="Captured photo">
+            <div class="flex justify-center gap-4 mt-4">
+                <button id="capture-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"><i class="fa-solid fa-camera mr-2"></i>ถ่ายภาพ</button>
+                <button id="save-photo-btn" class="hidden px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"><i class="fa-solid fa-save mr-2"></i>บันทึกรูป</button>
+                <button id="retake-photo-btn" class="hidden px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600">ถ่ายใหม่</button>
+                <button id="close-camera-btn" class="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300">ปิด</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Barcode Scanner Modal -->
+    <div id="barcode-scanner-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-11/12 md:w-1/2">
+            <h3 class="font-bold text-lg mb-4">สแกนบาร์โค้ด</h3>
+            <video id="barcode-video" class="w-full h-auto bg-slate-200 rounded"></video>
+            <p id="barcode-result" class="text-center mt-2 font-mono"></p>
+            <div class="flex justify-center mt-4">
+                <button id="close-barcode-scanner-btn" class="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300">ปิด</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden file input for image uploads -->
+    <input type="file" id="image-upload-input" class="hidden" accept="image/*">
+
+    <!-- Header and Navigation -->
+    <header class="bg-white shadow-md sticky top-0 z-20">
+        <nav class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-4">
+                <i class="fa-solid fa-pills text-emerald-500 text-3xl"></i>
+                <h1 class="text-xl font-bold text-slate-800 font-kanit">ระบบจัดการร้านยา</h1>
+            </div>
+            <div class="hidden md:flex items-center space-x-2">
+                <a href="#dashboard" class="nav-link px-3 py-2 text-slate-600 hover:bg-emerald-50 rounded-md">ภาพรวม</a>
+                <a href="#pos" class="nav-link px-3 py-2 text-slate-600 hover:bg-emerald-50 rounded-md">ขายหน้าร้าน (POS)</a>
+                <a href="#inventory" class="nav-link px-3 py-2 text-slate-600 hover:bg-emerald-50 rounded-md">จัดการคลัง</a>
+                <a href="#members" class="nav-link px-3 py-2 text-slate-600 hover:bg-emerald-50 rounded-md">จัดการสมาชิก</a>
+                <a href="#formulary" class="nav-link px-3 py-2 text-slate-600 hover:bg-emerald-50 rounded-md">ข้อมูลยา</a>
+                <a href="#reports" class="nav-link px-3 py-2 text-slate-600 hover:bg-emerald-50 rounded-md">รายงาน</a>
+                 <a href="#settings" class="nav-link px-3 py-2 text-slate-600 hover:bg-emerald-50 rounded-md">ตั้งค่า</a>
+            </div>
+            <button id="mobileMenuBtn" class="md:hidden">
+                <i class="fa-solid fa-bars text-xl"></i>
+            </button>
+        </nav>
+        <!-- Mobile Menu -->
+        <div id="mobileMenu" class="hidden md:hidden bg-white border-t">
+            <a href="#dashboard" class="block nav-link px-4 py-3 text-slate-600 hover:bg-emerald-50">ภาพรวม</a>
+            <a href="#pos" class="block nav-link px-4 py-3 text-slate-600 hover:bg-emerald-50">ขายหน้าร้าน (POS)</a>
+            <a href="#inventory" class="block nav-link px-4 py-3 text-slate-600 hover:bg-emerald-50">จัดการคลัง</a>
+            <a href="#members" class="block nav-link px-4 py-3 text-slate-600 hover:bg-emerald-50">จัดการสมาชิก</a>
+            <a href="#formulary" class="block nav-link px-4 py-3 text-slate-600 hover:bg-emerald-50">ข้อมูลยา</a>
+            <a href="#reports" class="block nav-link px-4 py-3 text-slate-600 hover:bg-emerald-50">รายงาน</a>
+            <a href="#settings" class="block nav-link px-4 py-3 text-slate-600 hover:bg-emerald-50">ตั้งค่า</a>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto p-4 md:p-6">
+
+        <!-- Page: Dashboard -->
+        <div id="page-dashboard" class="page">
+             <h2 class="text-2xl font-bold text-slate-800 mb-4 font-kanit">ภาพรวมระบบ</h2>
+             <div class="flex flex-wrap items-center gap-2 mb-6">
+                <button class="filter-btn px-4 py-2 text-sm rounded-lg bg-white shadow-sm" data-period="daily">วันนี้</button>
+                <button class="filter-btn px-4 py-2 text-sm rounded-lg bg-white shadow-sm" data-period="weekly">สัปดาห์นี้</button>
+                <button class="filter-btn px-4 py-2 text-sm rounded-lg bg-white shadow-sm" data-period="monthly">เดือนนี้</button>
+                <button class="filter-btn px-4 py-2 text-sm rounded-lg bg-white shadow-sm" data-period="yearly">ปีนี้</button>
+             </div>
+
+             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- Total Sales -->
+                <div class="dashboard-card lg:col-span-4">
+                    <h3 class="font-bold text-slate-600 font-kanit">ยอดขายรวม</h3>
+                    <p id="dashboard-total-sales" class="text-4xl font-bold text-emerald-600 mt-2">0.00 บาท</p>
+                </div>
+
+                <!-- Top Selling Drugs -->
+                <div class="dashboard-card md:col-span-2">
+                    <h3 class="font-bold text-slate-600 font-kanit">10 อันดับยาชื่อสามัญขายดี</h3>
+                    <div id="dashboard-top-drugs" class="mt-4 space-y-2 text-sm"></div>
+                </div>
+
+                <!-- Top Members -->
+                <div class="dashboard-card md:col-span-2">
+                    <h3 class="font-bold text-slate-600 font-kanit">10 อันดับยอดขายสมาชิก</h3>
+                    <div id="dashboard-top-members" class="mt-4 space-y-2 text-sm"></div>
+                </div>
+
+                <!-- Low Stock Items -->
+                <div class="dashboard-card">
+                    <h3 class="font-bold text-slate-600 font-kanit">รายการที่ต้องสั่งซื้อ (ต่ำกว่า Min)</h3>
+                    <div id="dashboard-low-stock" class="mt-4 space-y-2 text-sm"></div>
+                </div>
+
+                 <!-- Expiring Items -->
+                <div class="dashboard-card lg:col-span-3">
+                    <h3 class="font-bold text-slate-600 font-kanit">10 อันดับสินค้าใกล้หมดอายุ</h3>
+                    <div id="dashboard-expiring-items" class="mt-4 space-y-2 text-sm"></div>
+                </div>
+             </div>
+        </div>
+
+        <!-- Page: Point of Sale (POS) -->
+        <div id="page-pos" class="page">
+             <h2 class="text-2xl font-bold text-slate-800 mb-6 font-kanit">ขายหน้าร้าน (POS)</h2>
+            <form id="posForm" class="bg-white p-6 rounded-lg shadow-lg space-y-6">
+                <!-- Member Section -->
+                <div class="border-b pb-4">
+                    <h3 class="font-bold text-lg mb-2">ข้อมูลลูกค้า</h3>
+                    <div class="relative">
+                        <input type="text" id="posMemberSearch" placeholder="ค้นหาชื่อ หรือ เบอร์โทรศัพท์ลูกค้า..." class="w-full p-2 border rounded">
+                        <i id="posMemberClear" class="fa-solid fa-xmark search-clear-btn hidden"></i>
+                        <div id="posMemberResults" class="search-results absolute w-full bg-white border rounded-b-lg shadow-lg z-10 hidden"></div>
+                    </div>
+                    <div id="posSelectedMember" class="mt-2 text-sm"></div>
+                </div>
+
+                <!-- Drug Selection Section -->
+                 <div class="border-b pb-4">
+                    <h3 class="font-bold text-lg mb-2">เลือกรายการยา (FEFO)</h3>
+                     <div class="flex items-end gap-2 mb-2">
+                        <div class="relative flex-grow">
+                            <label class="text-sm">ค้นหายา (จากคลังที่มีขาย)</label>
+                            <input type="text" id="posDrugSearch" placeholder="พิมพ์ชื่อการค้า หรือ ชื่อสามัญ..." class="w-full p-2 border rounded">
+                            <i id="posDrugClear" class="fa-solid fa-xmark search-clear-btn hidden" style="right: 0.5rem; top: 2.125rem;"></i>
+                            <div id="posDrugResults" class="search-results absolute w-full bg-white border rounded-b-lg shadow-lg z-10 hidden"></div>
+                        </div>
+                        <button type="button" id="posScanBarcodeBtn" class="p-2 border rounded bg-slate-100 hover:bg-slate-200" title="สแกนบาร์โค้ด"><i class="fa-solid fa-barcode text-xl"></i></button>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                        <div class="md:col-span-3">
+                             <label class="text-sm">เลือก Lot (ใกล้หมดอายุก่อน)</label>
+                             <select id="posLotSelect" class="w-full p-2 border rounded bg-white"></select>
+                        </div>
+                         <div class="md:col-span-2">
+                             <label class="text-sm">จำนวน</label>
+                             <input type="number" id="posQuantity" value="1" min="1" class="w-full p-2 border rounded">
+                        </div>
+                    </div>
+                    <div id="posDrugInfo" class="mt-4 text-sm bg-slate-50 p-3 rounded-lg border border-slate-200 hidden"></div>
+                    <button type="button" id="posAddToCartBtn" class="w-full mt-4 bg-emerald-600 text-white py-2 rounded-lg hover:bg-emerald-700">เพิ่มลงตะกร้า</button>
+                </div>
+                
+                <!-- Cart Section -->
+                <div>
+                    <h3 class="font-bold text-lg mb-2">ตะกร้าสินค้า</h3>
+                     <div class="border rounded-lg min-h-[100px] p-2 bg-slate-50">
+                        <table class="w-full text-sm"><thead class="border-b-2"><tr><th class="text-left p-1">รายการ</th><th class="p-1">Lot</th><th class="p-1">จำนวน</th><th class="text-right p-1">รวม</th><th></th></tr></thead><tbody id="posCartItems"></tbody></table>
+                    </div>
+                    <button type="button" id="posResetCartBtn" class="text-sm text-red-600 mt-2 hover:underline">ล้างตะกร้า</button>
+                </div>
+
+                <!-- Payment Section -->
+                <div class="border-t pt-4 space-y-2">
+                    <div class="flex justify-between items-center text-xl font-bold">
+                        <span>ยอดรวม:</span>
+                        <span id="posTotalAmount">0.00 บาท</span>
+                    </div>
+                     <div class="flex justify-between items-center">
+                        <label for="posCashReceived">รับเงินมา:</label>
+                        <input type="number" id="posCashReceived" class="w-1/2 p-2 border rounded text-right" step="0.01">
+                    </div>
+                     <div class="flex justify-between items-center font-bold">
+                        <span>เงินทอน:</span>
+                        <span id="posChangeGiven" class="text-lg">0.00</span>
+                    </div>
+                     <div class="flex justify-between items-center">
+                        <label for="posPharmacist">ผู้ขาย (เภสัชกร):</label>
+                        <input type="text" id="posPharmacist" class="w-1/2 p-2 border rounded" required>
+                    </div>
+                    <button type="submit" id="posSubmitSaleBtn" class="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 text-lg font-bold">บันทึกการขาย</button>
+                    <div id="posPostSaleActions" class="hidden w-full flex gap-4">
+                        <button type="button" id="posPrintReceiptBtn" class="flex-grow bg-sky-600 text-white py-3 rounded-lg hover:bg-sky-700 text-lg font-bold">พิมพ์ใบเสร็จ</button>
+                        <button type="button" id="posNewSaleBtn" class="flex-grow bg-emerald-600 text-white py-3 rounded-lg hover:bg-emerald-700 text-lg font-bold">ขายรายการใหม่</button>
+                    </div>
+                    <div id="posResponseMsg" class="text-center text-sm font-semibold mt-2"></div>
+                </div>
+            </form>
+        </div>
+
+        <!-- Page: Inventory Management -->
+        <div id="page-inventory" class="page">
+            <h2 class="text-2xl font-bold text-slate-800 mb-6 font-kanit">จัดการคลังสินค้า</h2>
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h3 class="font-bold text-lg mb-4">รับสินค้าเข้า (Goods Received)</h3>
+                <form id="goodsReceivedForm" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="relative md:col-span-2">
+                        <label>ค้นหารายการยาจาก Formulary</label>
+                        <input type="text" id="invDrugSearch" placeholder="พิมพ์ชื่อยา..." class="w-full p-2 border rounded">
+                        <i id="invDrugClear" class="fa-solid fa-xmark search-clear-btn hidden" style="right: 0.5rem; top: 2.125rem;"></i>
+                        <div id="invDrugResults" class="search-results absolute w-full bg-white border rounded-b-lg shadow-lg z-10 hidden"></div>
+                        <input type="hidden" id="invSelectedDrugId">
+                    </div>
+                     <div class="md:col-span-2">
+                        <label>บาร์โค้ด</label>
+                        <div class="flex items-center gap-2">
+                             <input type="text" id="invBarcode" placeholder="Barcode" class="flex-grow p-2 border rounded">
+                             <button type="button" id="invScanBarcodeBtn" class="p-2 border rounded bg-slate-100 hover:bg-slate-200" title="สแกนบาร์โค้ด"><i class="fa-solid fa-barcode text-xl"></i></button>
+                        </div>
+                    </div>
+                    <input type="text" id="invLotNumber" placeholder="Lot Number" class="p-2 border rounded" required>
+                    <input type="date" id="invExpiryDate" placeholder="วันหมดอายุ" class="p-2 border rounded" required>
+                    <input type="number" id="invQuantity" placeholder="จำนวน" class="p-2 border rounded" required min="1">
+                    <input type="number" id="invCostPrice" placeholder="ราคาทุน/หน่วย" class="p-2 border rounded" required step="0.01" min="0">
+                    <input type="number" id="invSellingPrice" placeholder="ราคาขาย/หน่วย" class="p-2 border rounded" required step="0.01" min="0">
+                    <input type="text" id="invReferenceId" placeholder="เลขอ้างอิง (ถ้ามี)" class="p-2 border rounded">
+                    <button type="submit" class="md:col-span-2 bg-emerald-600 text-white py-2 rounded-lg hover:bg-emerald-700">บันทึกรับเข้า</button>
+                </form>
+            </div>
+             <div class="mt-6 bg-white p-6 rounded-lg shadow">
+                 <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-lg">สรุปยอดสินค้าคงคลัง</h3>
+                    <button id="refreshInventoryBtn" class="px-3 py-1 text-sm bg-slate-200 rounded-lg hover:bg-slate-300">Refresh</button>
+                </div>
+                <div id="inventoryTable" class="overflow-x-auto"></div>
+            </div>
+        </div>
+
+        <!-- Page: Member Management (CRM) -->
+        <div id="page-members" class="page">
+            <h2 class="text-2xl font-bold text-slate-800 mb-6 font-kanit">จัดการสมาชิก</h2>
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h3 class="font-bold text-lg mb-4">เพิ่มสมาชิกใหม่</h3>
+                <form id="addMemberForm" class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <input type="text" id="memberFullName" placeholder="ชื่อ-นามสกุล" class="p-2 border rounded" required>
+                        <input type="text" id="memberNationalID" placeholder="เลขบัตรประชาชน" class="p-2 border rounded">
+                        <input type="date" id="memberDob" placeholder="วันเดือนปีเกิด" class="p-2 border rounded">
+                        <input type="tel" id="memberPhone" placeholder="เบอร์โทรศัพท์" class="p-2 border rounded">
+                        <textarea id="memberDisease" placeholder="โรคประจำตัว" class="p-2 border rounded md:col-span-2" rows="2"></textarea>
+                    </div>
+                    
+                    <div>
+                        <h4 class="font-bold mt-2 mb-2">ประวัติการแพ้ยา</h4>
+                        <div id="allergies-container" class="space-y-2">
+                            <!-- Allergy fields will be generated here by JS -->
+                        </div>
+                    </div>
+
+                    <button type="submit" class="w-full bg-emerald-600 text-white py-2 rounded-lg hover:bg-emerald-700">บันทึกสมาชิก</button>
+                </form>
+            </div>
+            <div class="mt-6 bg-white p-6 rounded-lg shadow">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-lg">รายชื่อสมาชิก</h3>
+                    <button id="refreshMembersBtn" class="px-3 py-1 text-sm bg-slate-200 rounded-lg hover:bg-slate-300">Refresh</button>
+                </div>
+                <div id="membersTable" class="overflow-x-auto"></div>
+            </div>
+        </div>
+
+        <!-- Page: Drug Formulary -->
+        <div id="page-formulary" class="page">
+            <h2 class="text-2xl font-bold text-slate-800 mb-6 font-kanit">จัดการข้อมูลยา (Formulary)</h2>
+             <div class="bg-white p-6 rounded-lg shadow">
+                <h3 class="font-bold text-lg mb-4">เพิ่ม/แก้ไขรายการยา</h3>
+                <form id="addDrugForm" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <input type="text" id="drugId" placeholder="รหัสยา (SKU)" class="p-2 border rounded" required>
+                    <input type="text" id="tradeName" placeholder="ชื่อการค้า" class="p-2 border rounded" required>
+                    <input type="text" id="genericName" placeholder="ชื่อสามัญ" class="p-2 border rounded">
+                    
+                    <select id="legalCategory" class="p-2 border rounded bg-white" required>
+                        <option value="" disabled selected>-- ประเภทสินค้าตามกฎหมาย --</option>
+                        <option value="ยาอันตราย">ยาอันตราย</option>
+                        <option value="ยาควบคุมพิเศษ">ยาควบคุมพิเศษ</option>
+                        <option value="ยาบรรจุเสร็จ">ยาบรรจุเสร็จ (ทั่วไป)</option>
+                        <option value="ยาสามัญประจำบ้าน">ยาสามัญประจำบ้าน</option>
+                        <option value="ผลิตภัณฑ์เสริมอาหาร">ผลิตภัณฑ์เสริมอาหาร</option>
+                        <option value="เครื่องมือแพทย์">เครื่องมือแพทย์</option>
+                        <option value="เครื่องสำอาง">เครื่องสำอาง</option>
+                        <option value="ผลิตภัณฑ์สมุนไพร">ผลิตภัณฑ์สมุนไพร</option>
+                        <option value="อื่นๆ">อื่นๆ</option>
+                    </select>
+
+                    <select id="pharmaCategory" class="p-2 border rounded bg-white" required>
+                        <option value="" disabled selected>-- ประเภทสินค้าตามการใช้งาน --</option>
+                        <optgroup label="กลุ่มยา">
+                            <option value="ยาแก้ปวด ลดไข้ ต้านอักเสบ">ยาแก้ปวด ลดไข้ ต้านอักเสบ</option>
+                            <option value="ยาปฏิชีวนะ">ยาปฏิชีวนะ</option>
+                            <option value="ยาแก้แพ้ ลดน้ำมูก แก้ไอ">ยาแก้แพ้ ลดน้ำมูก แก้ไอ</option>
+                            <option value="ยาสำหรับระบบทางเดินอาหาร">ยาสำหรับระบบทางเดินอาหาร</option>
+                            <option value="ยาสำหรับโรคเรื้อรัง">ยาสำหรับโรคเรื้อรัง</option>
+                            <option value="ยาใช้ภายนอก">ยาใช้ภายนอก</option>
+                            <option value="วิตามินและแร่ธาตุ (ยา)">วิตามินและแร่ธาตุ (ยา)</option>
+                        </optgroup>
+                        <optgroup label="ผลิตภัณฑ์เสริมอาหาร">
+                            <option value="เสริมภูมิคุ้มกัน">เสริมภูมิคุ้มกัน</option>
+                            <option value="บำรุงผิว ผม เล็บ">บำรุงผิว ผม เล็บ</option>
+                            <option value="บำรุงกระดูกและข้อ">บำรุงกระดูกและข้อ</option>
+                            <option value="บำรุงสมองและความจำ">บำรุงสมองและความจำ</option>
+                            <option value="ควบคุมน้ำหนัก">ควบคุมน้ำหนัก</option>
+                            <option value="สุขภาพลำไส้และโปรไบโอติกส์">สุขภาพลำไส้และโปรไบโอติกส์</option>
+                        </optgroup>
+                        <optgroup label="เครื่องมือแพทย์">
+                            <option value="อุปกรณ์ตรวจวัด">อุปกรณ์ตรวจวัด</option>
+                            <option value="อุปกรณ์ทำแผลและปฐมพยาบาล">อุปกรณ์ทำแผลและปฐมพยาบาล</option>
+                            <option value="อุปกรณ์พยุงร่างกาย">อุปกรณ์พยุงร่างกาย</option>
+                        </optgroup>
+                        <optgroup label="เครื่องสำอาง/เวชสำอาง">
+                            <option value="ผลิตภัณฑ์ทำความสะอาด">ผลิตภัณฑ์ทำความสะอาด</option>
+                            <option value="ผลิตภัณฑ์ให้ความชุ่มชื้น">ผลิตภัณฑ์ให้ความชุ่มชื้น</option>
+                            <option value="ผลิตภัณฑ์สำหรับสิว">ผลิตภัณฑ์สำหรับสิว</option>
+                            <option value="ผลิตภัณฑ์ป้องกันแสงแดด">ผลิตภัณฑ์ป้องกันแสงแดด</option>
+                        </optgroup>
+                        <option value="อื่นๆ">อื่นๆ</option>
+                    </select>
+
+                    <input type="text" id="strength" placeholder="ขนาด/ความแรง" class="p-2 border rounded">
+
+                    <select id="unit" class="p-2 border rounded bg-white" required>
+                        <option value="" disabled selected>-- หน่วยนับ --</option>
+                        <option value="เม็ด">เม็ด</option>
+                        <option value="แคปซูล">แคปซูล</option>
+                        <option value="ขวด">ขวด</option>
+                        <option value="หลอด">หลอด</option>
+                        <option value="ซอง">ซอง</option>
+                        <option value="กล่อง">กล่อง</option>
+                        <option value="ชิ้น">ชิ้น</option>
+                        <option value="มิลลิลิตร">มิลลิลิตร</option>
+                        <option value="กรัม">กรัม</option>
+                        <option value="อื่นๆ">อื่นๆ</option>
+                    </select>
+                    
+                    <h4 class="font-bold md:col-span-3 mt-2">การจัดการสต็อก</h4>
+                    <input type="number" id="minStock" placeholder="จำนวนขั้นต่ำ (Min Stock)" class="p-2 border rounded">
+                    <input type="number" id="maxStock" placeholder="จำนวนสูงสุด (Max Stock)" class="p-2 border rounded">
+                    
+                    <textarea id="indication" placeholder="ข้อบ่งใช้" class="p-2 border rounded md:col-span-3" rows="2"></textarea>
+                    <textarea id="caution" placeholder="ข้อควรระวัง" class="p-2 border rounded md:col-span-3" rows="2"></textarea>
+                    
+                    <h4 class="font-bold md:col-span-3 mt-2">รายการยาที่ตีกัน (Drug Interaction)</h4>
+                    <input type="text" id="interaction1" placeholder="ชื่อสามัญของยาที่ตีกัน 1" class="p-2 border rounded">
+                    <input type="text" id="interaction2" placeholder="ชื่อสามัญของยาที่ตีกัน 2" class="p-2 border rounded">
+                    <input type="text" id="interaction3" placeholder="ชื่อสามัญของยาที่ตีกัน 3" class="p-2 border rounded">
+                    <input type="text" id="interaction4" placeholder="ชื่อสามัญของยาที่ตีกัน 4" class="p-2 border rounded">
+                    <input type="text" id="interaction5" placeholder="ชื่อสามัญของยาที่ตีกัน 5" class="p-2 border rounded">
+
+                    <button type="submit" class="md:col-span-3 bg-emerald-600 text-white py-2 rounded-lg hover:bg-emerald-700">บันทึกข้อมูลยา</button>
+                </form>
+            </div>
+             <div class="mt-6 bg-white p-6 rounded-lg shadow">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-lg">รายการยาทั้งหมด</h3>
+                    <button id="refreshDrugsBtn" class="px-3 py-1 text-sm bg-slate-200 rounded-lg hover:bg-slate-300">Refresh</button>
+                </div>
+                <div id="formularyTable" class="overflow-x-auto"></div>
+            </div>
+        </div>
+        
+        <!-- Page: Reports -->
+        <div id="page-reports" class="page">
+            <h2 class="text-2xl font-bold text-slate-800 mb-6 font-kanit">รายงาน</h2>
+            <div class="bg-white p-6 rounded-lg shadow">
+                <div class="flex flex-wrap items-end gap-4 mb-4">
+                    <div>
+                        <label for="reportType" class="text-sm font-medium">ประเภทรายงาน:</label>
+                        <select id="reportType" class="p-2 border rounded bg-white">
+                            <option value="dailySales">ยอดขายรายวัน</option>
+                            <option value="weeklySales">ยอดขายรายสัปดาห์</option>
+                            <option value="monthlySales">ยอดขายรายเดือน</option>
+                            <option value="yearlySales">ยอดขายรายปี</option>
+                            <option value="inventory">รายงานสินค้าคงคลัง</option>
+                            <option value="members">รายงานข้อมูลสมาชิก</option>
+                        </select>
+                    </div>
+                    <!-- Date pickers container -->
+                    <div id="date-pickers-container" class="flex flex-wrap items-end gap-4">
+                        <div id="daily-picker-container">
+                            <label for="reportDate" class="text-sm font-medium">วันที่:</label>
+                            <input type="date" id="reportDate" class="p-2 border rounded">
+                        </div>
+                         <div id="weekly-picker-container" class="hidden">
+                            <label for="reportWeek" class="text-sm font-medium">เลือกวันในสัปดาห์:</label>
+                            <input type="date" id="reportWeek" class="p-2 border rounded">
+                        </div>
+                        <div id="monthly-picker-container" class="hidden">
+                            <label for="reportMonth" class="text-sm font-medium">เดือน/ปี:</label>
+                            <input type="month" id="reportMonth" class="p-2 border rounded">
+                        </div>
+                        <div id="yearly-picker-container" class="hidden">
+                            <label for="reportYear" class="text-sm font-medium">ปี:</label>
+                            <input type="number" id="reportYear" class="p-2 border rounded w-28" placeholder="YYYY">
+                        </div>
+                    </div>
+                    <button id="generateReportBtn" class="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700">สร้างรายงาน</button>
+                </div>
+                <div id="reportResultTable" class="overflow-x-auto">
+                    <p class="text-center text-slate-500">กรุณาเลือกประเภทรายงานและกด "สร้างรายงาน"</p>
+                </div>
+                 <div id="reportSummary" class="mt-4 text-right font-bold"></div>
+            </div>
+        </div>
+        
+        <!-- Page: Settings -->
+        <div id="page-settings" class="page">
+            <h2 class="text-2xl font-bold text-slate-800 mb-6 font-kanit">ตั้งค่า</h2>
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h3 class="font-bold text-lg mb-4">การตั้งค่าระบบ</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label for="settingsScriptUrl" class="block text-sm font-medium text-slate-700">Google Apps Script Web App URL</label>
+                        <input type="text" id="settingsScriptUrl" placeholder="วาง URL ที่คัดลอกมาที่นี่" class="mt-1 block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500">
+                    </div>
+                    <button id="settingsSaveBtn" class="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700">บันทึกการตั้งค่า</button>
+                    <p id="settingsStatusMsg" class="text-sm text-emerald-600 mt-2"></p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+<script>
+'use strict';
+// ===================================================================================
+// ===== CONFIGURATION: URL is now managed in the Settings page ======================
+// ===================================================================================
+let SCRIPT_URL = localStorage.getItem('pharmacyAppScriptUrl') || "PASTE_YOUR_WEB_APP_URL_HERE"; 
+// ===================================================================================
+
+// --- Basic Setup, Navigation, and Modals ---
+const pages = document.querySelectorAll('.page');
+const navLinks = document.querySelectorAll('.nav-link');
+const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+const mobileMenu = document.getElementById('mobileMenu');
+const globalLoader = document.getElementById('global-loader');
+// --- Custom Modals
+const customAlertModal = document.getElementById('custom-alert-modal');
+const customAlertMessage = document.getElementById('custom-alert-message');
+const customAlertCloseBtn = document.getElementById('custom-alert-close');
+const customConfirmModal = document.getElementById('custom-confirm-modal');
+const customConfirmTitle = document.getElementById('custom-confirm-title');
+const customConfirmMessage = document.getElementById('custom-confirm-message');
+const customConfirmOkBtn = document.getElementById('custom-confirm-ok');
+const customConfirmCancelBtn = document.getElementById('custom-confirm-cancel');
+// --- Camera Modal
+const cameraModal = document.getElementById('camera-modal');
+const video = document.getElementById('camera-video');
+const canvas = document.getElementById('camera-canvas');
+const photoPreview = document.getElementById('photo-preview');
+const captureBtn = document.getElementById('capture-btn');
+const savePhotoBtn = document.getElementById('save-photo-btn');
+const retakePhotoBtn = document.getElementById('retake-photo-btn');
+const closeCameraBtn = document.getElementById('close-camera-btn');
+let stream;
+let currentDrugIdForPhoto = null;
+const imageUploadInput = document.getElementById('image-upload-input');
+
+// --- Barcode Scanner Modal ---
+const barcodeScannerModal = document.getElementById('barcode-scanner-modal');
+const barcodeVideo = document.getElementById('barcode-video');
+const closeBarcodeScannerBtn = document.getElementById('close-barcode-scanner-btn');
+let barcodeScannerCallback = null;
+const codeReader = new ZXing.BrowserMultiFormatReader();
+
+
+let confirmResolve = null;
+
+function showPage(pageId) {
+    pages.forEach(page => page.classList.remove('active'));
+    navLinks.forEach(link => link.classList.remove('active'));
+    const activePage = document.getElementById(`page-${pageId}`);
+    if (activePage) activePage.classList.add('active');
+    const activeLinks = document.querySelectorAll(`.nav-link[href="#${pageId}"]`);
+    activeLinks.forEach(link => link.classList.add('active'));
+    mobileMenu.classList.add('hidden');
+    switch (pageId) {
+        case 'dashboard': loadDashboard('daily'); break;
+        case 'members': loadMembers(); break;
+        case 'formulary': loadFormulary(); break;
+        case 'inventory': loadInventorySummary(); break;
+        case 'pos': loadPOSData(); break;
+        case 'reports': loadReports(); break;
+        case 'settings': loadSettings(); break;
+    }
+}
+
+navLinks.forEach(link => {
+    link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const pageId = e.currentTarget.hash.substring(1);
+        window.location.hash = pageId;
+    });
+});
+
+window.addEventListener('hashchange', () => {
+    const pageId = window.location.hash.substring(1) || 'dashboard';
+    showPage(pageId);
+});
+
+mobileMenuBtn.addEventListener('click', () => mobileMenu.classList.toggle('hidden'));
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadSettings(); // Load URL from localStorage on startup
+    if (SCRIPT_URL === "PASTE_YOUR_WEB_APP_URL_HERE") {
+        showCustomAlert('กรุณาไปที่หน้า "ตั้งค่า" เพื่อใส่ Web App URL ของคุณ');
+    }
+    const pageId = window.location.hash.substring(1) || 'dashboard';
+    showPage(pageId);
+    generateAllergyFields();
+});
+
+// --- Custom Modals ---
+function showCustomAlert(message) {
+    customAlertMessage.textContent = message;
+    customAlertModal.classList.remove('hidden');
+}
+customAlertCloseBtn.addEventListener('click', () => customAlertModal.classList.add('hidden'));
+
+function showConfirmation(message, title = 'ยืนยันการกระทำ') {
+    return new Promise((resolve) => {
+        confirmResolve = resolve;
+        customConfirmTitle.textContent = title;
+        customConfirmMessage.innerHTML = message; // Use innerHTML to allow for formatting
+        customConfirmModal.classList.remove('hidden');
+    });
+}
+customConfirmOkBtn.addEventListener('click', () => {
+    customConfirmModal.classList.add('hidden');
+    if (confirmResolve) confirmResolve(true);
+});
+customConfirmCancelBtn.addEventListener('click', () => {
+    customConfirmModal.classList.add('hidden');
+    if (confirmResolve) confirmResolve(false);
+});
+
+// --- Loader and API Helper ---
+const showLoader = () => globalLoader.classList.remove('hidden');
+const hideLoader = () => globalLoader.classList.add('hidden');
+
+async function apiCall(action, payload = {}) {
+    if (SCRIPT_URL === "PASTE_YOUR_WEB_APP_URL_HERE") {
+        showCustomAlert('กรุณาตั้งค่า Web App URL ในหน้า "ตั้งค่า"');
+        return Promise.reject('URL not configured');
+    }
+    showLoader();
+    try {
+        const url = new URL(SCRIPT_URL);
+        url.searchParams.append('action', action);
+        Object.keys(payload).forEach(key => url.searchParams.append(key, payload[key]));
+        
+        const response = await fetch(url, { method: 'GET' });
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const result = await response.json();
+        if (result.status === 'error' && (result.message.includes('SPREADSHEET_ID') || result.message.includes('DRIVE_FOLDER_ID'))) {
+             throw new Error('กรุณาตรวจสอบ SPREADSHEET_ID และ DRIVE_FOLDER_ID ในโค้ด Backend');
+        }
+        return result;
+    } catch (error) {
+        console.error(`API GET call failed for action '${action}':`, error);
+        showCustomAlert(`เกิดข้อผิดพลาดในการสื่อสารกับเซิร์ฟเวอร์: ${error.message}`);
+        throw error;
+    } finally {
+        hideLoader();
+    }
+}
+
+async function apiPost(action, payload) {
+    if (SCRIPT_URL === "PASTE_YOUR_WEB_APP_URL_HERE") {
+        showCustomAlert('กรุณาตั้งค่า Web App URL ในหน้า "ตั้งค่า"');
+        return Promise.reject('URL not configured');
+    }
+    showLoader();
+    try {
+        const options = {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ action, payload }),
+            redirect: 'follow'
+        };
+        const response = await fetch(SCRIPT_URL, options);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return await response.json();
+    } catch (error) {
+        console.error(`API POST call failed for action '${action}':`, error);
+        showCustomAlert(`เกิดข้อผิดพลาดในการส่งข้อมูล: ${error.message}`);
+        throw error;
+    } finally {
+        hideLoader();
+    }
+}
+
+// --- Generic Helper Functions ---
+function renderTable(container, data, highlightKey = null, options = {}) {
+    const reportSummaryEl = document.getElementById('reportSummary');
+    if (reportSummaryEl) reportSummaryEl.innerHTML = '';
+    
+    if (!container) return;
+    if (!data || data.length === 0) {
+        container.innerHTML = `<p class="text-center text-slate-500">ไม่พบข้อมูล</p>`;
+        return;
+    }
+    const headers = Object.keys(data[0]);
+    let tableHtml = `<table class="w-full text-sm text-left text-slate-500"><thead class="text-xs text-slate-700 uppercase bg-slate-50"><tr>`;
+    headers.forEach(h => tableHtml += `<th scope="col" class="px-6 py-3">${h}</th>`);
+    if(options.actions) tableHtml += `<th scope="col" class="px-6 py-3">Actions</th>`;
+    tableHtml += `</tr></thead><tbody>`;
+    data.forEach(row => {
+        let highlightClass = '';
+        if (highlightKey && row[highlightKey]) {
+            const expiryDate = new Date(row[highlightKey]);
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const threeMonthsFromNow = new Date(); threeMonthsFromNow.setMonth(today.getMonth() + 3);
+            if (expiryDate < today) highlightClass = 'bg-red-200';
+            else if (expiryDate < threeMonthsFromNow) highlightClass = 'bg-yellow-100';
+        }
+        tableHtml += `<tr class="bg-white border-b ${highlightClass}">`;
+        headers.forEach(h => {
+            let value = row[h] ?? '';
+            if ((h.toLowerCase().includes('date') || h.toLowerCase().includes('dob') || h.toLowerCase().includes('expiry')) && value) {
+                const d = new Date(value);
+                if (!isNaN(d.getTime())) value = d.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
+            } else if (h === 'imageUrl' && value) {
+                value = `<img src="${value.replace("uc?id=", "thumbnail?id=")}" class="w-16 h-16 object-cover rounded" alt="Drug Image" loading="lazy">`;
+            }
+            tableHtml += `<td class="px-6 py-4 align-middle">${value}</td>`;
+        });
+        if(options.actions) {
+            tableHtml += `<td class="px-6 py-4 align-middle space-y-2">`;
+            options.actions.forEach(action => {
+                tableHtml += `<div><button class="w-full text-white py-1 px-2 rounded ${action.class}" onclick="${action.handler}('${row[action.idField]}')">${action.label}</button></div>`;
+            });
+            tableHtml += `</td>`;
+        }
+        tableHtml += `</tr>`;
+    });
+    tableHtml += `</tbody></table>`;
+    container.innerHTML = tableHtml;
+
+    if (options.summarize && reportSummaryEl) {
+        const sum = data.reduce((acc, row) => acc + (Number(row[options.summarize.column]) || 0), 0);
+        reportSummaryEl.innerHTML = `<strong>${options.summarize.label}:</strong> ${sum.toFixed(2)} บาท`;
+    }
+}
+
+function debounce(func, delay) {
+    let timeout;
+    return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), delay);
+    };
+}
+
+// --- Dashboard ---
+const filterBtns = document.querySelectorAll('.filter-btn');
+async function loadDashboard(period) {
+    filterBtns.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.period === period);
+    });
+
+    const placeholder = '<div class="text-center text-slate-500 text-sm">กำลังโหลด...</div>';
+    document.getElementById('dashboard-total-sales').textContent = '...';
+    document.getElementById('dashboard-top-drugs').innerHTML = placeholder;
+    document.getElementById('dashboard-top-members').innerHTML = placeholder;
+    document.getElementById('dashboard-low-stock').innerHTML = placeholder;
+    document.getElementById('dashboard-expiring-items').innerHTML = placeholder;
+
+    try {
+        const data = await apiCall('getDashboardData', { period });
+        // Total Sales
+        document.getElementById('dashboard-total-sales').textContent = `${Number(data.totalSales || 0).toFixed(2)} บาท`;
+        // Top Drugs
+        renderDashboardList('dashboard-top-drugs', data.topDrugs, item => `${item.genericName} <span class="text-slate-500">(${item.totalQuantity} ชิ้น)</span>`);
+        // Top Members
+        renderDashboardList('dashboard-top-members', data.topMembers, item => `${item.fullName} <span class="text-slate-500">(${Number(item.totalAmount).toFixed(2)} บ.)</span>`);
+        // Low Stock
+        renderDashboardList('dashboard-low-stock', data.lowStockItems, item => `${item.tradeName} <span class="text-red-500">(${item.totalQuantity} / Min: ${item.minStock})</span>`);
+        // Expiring Items
+        renderDashboardList('dashboard-expiring-items', data.expiringItems, item => {
+             const expiry = new Date(item.expiryDate).toLocaleDateString('th-TH');
+             return `${item.tradeName} (Lot: ${item.lotNumber}) <span class="text-amber-600">(${expiry})</span>`
+        });
+    } catch (e) {
+        showCustomAlert('ไม่สามารถโหลดข้อมูล Dashboard ได้');
+    }
+}
+
+function renderDashboardList(elementId, data, formatter) {
+    const container = document.getElementById(elementId);
+    if (!data || data.length === 0) {
+        container.innerHTML = '<div class="text-center text-slate-500 text-sm">ไม่พบข้อมูล</div>';
+        return;
+    }
+    container.innerHTML = data.map(item => `<div class="flex justify-between items-center border-b pb-1">${formatter(item)}</div>`).join('');
+}
+
+filterBtns.forEach(btn => btn.addEventListener('click', () => loadDashboard(btn.dataset.period)));
+
+
+// --- Member Management (CRM) ---
+const addMemberForm = document.getElementById('addMemberForm');
+const membersTable = document.getElementById('membersTable');
+const refreshMembersBtn = document.getElementById('refreshMembersBtn');
+
+function generateAllergyFields() {
+    const container = document.getElementById('allergies-container');
+    container.innerHTML = '';
+    for (let i = 1; i <= 5; i++) {
+        const div = document.createElement('div');
+        div.className = 'grid grid-cols-1 md:grid-cols-2 gap-4';
+        div.innerHTML = `
+            <input type="text" id="allergyGenericName${i}" placeholder="ชื่อสามัญยาที่แพ้ ${i}" class="p-2 border rounded">
+            <input type="text" id="allergyReaction${i}" placeholder="อาการที่พบ ${i}" class="p-2 border rounded">
+        `;
+        container.appendChild(div);
+    }
+}
+
+async function loadMembers() {
+    membersTable.innerHTML = '';
+    try {
+        const members = await apiCall('getMembers');
+        renderTable(membersTable, members);
+    } catch (e) {
+        membersTable.innerHTML = `<p class="text-red-500">ไม่สามารถโหลดข้อมูลสมาชิกได้</p>`;
+    }
+}
+
+addMemberForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector('button');
+    btn.disabled = true;
+
+    const allergies = [];
+    for (let i = 1; i <= 5; i++) {
+        const genericName = document.getElementById(`allergyGenericName${i}`).value.trim();
+        const reaction = document.getElementById(`allergyReaction${i}`).value.trim();
+        if (genericName) {
+            allergies.push({ genericName, reaction });
+        }
+    }
+
+    const payload = {
+        fullName: document.getElementById('memberFullName').value,
+        nationalId: document.getElementById('memberNationalID').value,
+        dob: document.getElementById('memberDob').value,
+        phone: document.getElementById('memberPhone').value,
+        disease: document.getElementById('memberDisease').value,
+        allergies: JSON.stringify(allergies)
+    };
+    try {
+        await apiPost('addMember', payload);
+        showCustomAlert('เพิ่มสมาชิกสำเร็จ!');
+        addMemberForm.reset();
+        loadMembers();
+    } catch (error) { /* Handled by apiPost */ } 
+    finally { btn.disabled = false; }
+});
+refreshMembersBtn.addEventListener('click', loadMembers);
+
+// --- Drug Formulary & Camera ---
+const addDrugFormEl = document.getElementById('addDrugForm');
+const formularyTable = document.getElementById('formularyTable');
+const refreshDrugsBtn = document.getElementById('refreshDrugsBtn');
+
+async function loadFormulary() {
+    formularyTable.innerHTML = '';
+    try {
+        const drugs = await apiCall('getDrugs');
+        renderTable(formularyTable, drugs, null, {
+            actions: [{
+                label: 'ถ่ายรูป',
+                class: 'bg-blue-500 hover:bg-blue-600',
+                handler: 'openCameraModal',
+                idField: 'drugId'
+            }, {
+                label: 'อัปโหลด',
+                class: 'bg-indigo-500 hover:bg-indigo-600',
+                handler: 'openImageUpload',
+                idField: 'drugId'
+            }]
+        });
+    } catch (e) {
+        formularyTable.innerHTML = `<p class="text-red-500">ไม่สามารถโหลดข้อมูลยาได้</p>`;
+    }
+}
+
+// Camera Functions
+async function openCameraModal(drugId) {
+    currentDrugIdForPhoto = drugId;
+    cameraModal.classList.remove('hidden');
+    video.classList.remove('hidden');
+    photoPreview.classList.add('hidden');
+    captureBtn.classList.remove('hidden');
+    savePhotoBtn.classList.add('hidden');
+    retakePhotoBtn.classList.add('hidden');
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        video.srcObject = stream;
+    } catch (err) {
+        console.error("Error accessing camera: ", err);
+        showCustomAlert('ไม่สามารถเข้าถึงกล้องได้');
+        closeCameraModal();
+    }
+}
+
+function closeCameraModal() {
+    cameraModal.classList.add('hidden');
+    if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+    }
+}
+captureBtn.addEventListener('click', () => {
+    const context = canvas.getContext('2d');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    photoPreview.src = canvas.toDataURL('image/jpeg');
+    video.classList.add('hidden');
+    photoPreview.classList.remove('hidden');
+    captureBtn.classList.add('hidden');
+    savePhotoBtn.classList.remove('hidden');
+    retakePhotoBtn.classList.remove('hidden');
+});
+retakePhotoBtn.addEventListener('click', () => {
+    video.classList.remove('hidden');
+    photoPreview.classList.add('hidden');
+    captureBtn.classList.remove('hidden');
+    savePhotoBtn.classList.add('hidden');
+    retakePhotoBtn.classList.add('hidden');
+});
+closeCameraBtn.addEventListener('click', closeCameraModal);
+savePhotoBtn.addEventListener('click', () => {
+    const imageData = canvas.toDataURL('image/jpeg');
+    const base64Data = imageData.split(',')[1];
+    saveImageToServer(currentDrugIdForPhoto, base64Data);
+});
+
+// Image Upload Functions
+function openImageUpload(drugId) {
+    currentDrugIdForPhoto = drugId;
+    imageUploadInput.click();
+}
+imageUploadInput.addEventListener('change', (event) => {
+    const file = event.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const base64Data = e.target.result.split(',')[1];
+            saveImageToServer(currentDrugIdForPhoto, base64Data);
+        };
+        reader.readAsDataURL(file);
+    }
+    event.target.value = null; // Reset input
+});
+
+async function saveImageToServer(drugId, base64ImageData) {
+    try {
+        const result = await apiPost('saveDrugImage', { 
+            drugId: drugId, 
+            base64ImageData: base64ImageData 
+        });
+        if (result.status === 'success') {
+            showCustomAlert('บันทึกรูปภาพสำเร็จ!');
+            closeCameraModal();
+            loadFormulary();
+        } else {
+            throw new Error(result.message || 'Unknown error');
+        }
+    } catch(err) {
+        showCustomAlert('เกิดข้อผิดพลาดในการบันทึกรูปภาพ: ' + err.message);
+    }
+}
+
+addDrugFormEl.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector('button');
+    btn.disabled = true;
+    const payload = {
+        drugId: document.getElementById('drugId').value,
+        tradeName: document.getElementById('tradeName').value,
+        genericName: document.getElementById('genericName').value,
+        legalCategory: document.getElementById('legalCategory').value,
+        pharmaCategory: document.getElementById('pharmaCategory').value,
+        strength: document.getElementById('strength').value,
+        unit: document.getElementById('unit').value,
+        minStock: document.getElementById('minStock').value,
+        maxStock: document.getElementById('maxStock').value,
+        indication: document.getElementById('indication').value,
+        caution: document.getElementById('caution').value,
+        interaction1: document.getElementById('interaction1').value,
+        interaction2: document.getElementById('interaction2').value,
+        interaction3: document.getElementById('interaction3').value,
+        interaction4: document.getElementById('interaction4').value,
+        interaction5: document.getElementById('interaction5').value,
+    };
+    try {
+        await apiPost('addDrug', payload);
+        showCustomAlert('บันทึกข้อมูลยาสำเร็จ!');
+        addDrugFormEl.reset();
+        loadFormulary();
+    } catch (error) { /* Handled by apiPost */ } 
+    finally { btn.disabled = false; }
+});
+refreshDrugsBtn.addEventListener('click', loadFormulary);
+
+// --- Inventory Management ---
+const goodsReceivedForm = document.getElementById('goodsReceivedForm');
+const inventoryTable = document.getElementById('inventoryTable');
+const refreshInventoryBtn = document.getElementById('refreshInventoryBtn');
+const invDrugSearch = document.getElementById('invDrugSearch');
+const invDrugResults = document.getElementById('invDrugResults');
+const invSelectedDrugId = document.getElementById('invSelectedDrugId');
+const invDrugClear = document.getElementById('invDrugClear');
+const invScanBarcodeBtn = document.getElementById('invScanBarcodeBtn');
+const invBarcode = document.getElementById('invBarcode');
+
+async function loadInventorySummary() {
+    inventoryTable.innerHTML = '';
+    try {
+        const inventory = await apiCall('getInventorySummary');
+        renderTable(inventoryTable, inventory, 'วันหมดอายุ');
+    } catch (e) {
+        inventoryTable.innerHTML = `<p class="text-red-500">ไม่สามารถโหลดข้อมูลคลังได้</p>`;
+    }
+}
+
+goodsReceivedForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!invSelectedDrugId.value) {
+        showCustomAlert('กรุณาค้นหาและเลือกยาก่อน');
+        return;
+    }
+    const btn = e.target.querySelector('button');
+    btn.disabled = true;
+    const payload = {
+        drugId: invSelectedDrugId.value,
+        barcode: invBarcode.value,
+        lotNumber: document.getElementById('invLotNumber').value,
+        expiryDate: document.getElementById('invExpiryDate').value,
+        quantity: document.getElementById('invQuantity').value,
+        costPrice: document.getElementById('invCostPrice').value,
+        sellingPrice: document.getElementById('invSellingPrice').value,
+        referenceId: document.getElementById('invReferenceId').value
+    };
+    try {
+        await apiPost('addGoodsReceived', payload);
+        showCustomAlert('บันทึกรับสินค้าเข้าสำเร็จ!');
+        goodsReceivedForm.reset();
+        invDrugSearch.value = '';
+        invSelectedDrugId.value = '';
+        invDrugClear.classList.add('hidden');
+        loadInventorySummary();
+    } catch (error) { /* Handled by apiPost */ }
+    finally { btn.disabled = false; }
+});
+
+refreshInventoryBtn.addEventListener('click', loadInventorySummary);
+
+invDrugSearch.addEventListener('input', debounce(async (e) => {
+    const searchTerm = e.target.value.trim();
+    invDrugClear.classList.toggle('hidden', searchTerm.length === 0);
+    if (searchTerm.length < 2) {
+        invDrugResults.classList.add('hidden');
+        return;
+    }
+    try {
+        const results = await apiCall('searchDrugs', { term: searchTerm });
+        invDrugResults.innerHTML = '';
+        if (results.length > 0) {
+            results.forEach(drug => {
+                const div = document.createElement('div');
+                div.textContent = `${drug.tradeName} (${drug.genericName}) - ${drug.strength}`;
+                div.className = 'p-2 hover:bg-emerald-100 cursor-pointer';
+                div.onclick = () => {
+                    invDrugSearch.value = `${drug.tradeName} (${drug.genericName})`;
+                    invSelectedDrugId.value = drug.drugId;
+                    invDrugResults.classList.add('hidden');
+                };
+                invDrugResults.appendChild(div);
+            });
+            invDrugResults.classList.remove('hidden');
+        } else {
+            invDrugResults.classList.add('hidden');
+        }
+    } catch (error) { console.error('Drug search failed:', error); }
+}, 300));
+invDrugClear.addEventListener('click', () => {
+    invDrugSearch.value = '';
+    invSelectedDrugId.value = '';
+    invDrugResults.classList.add('hidden');
+    invDrugClear.classList.add('hidden');
+    invDrugSearch.focus();
+});
+invScanBarcodeBtn.addEventListener('click', () => {
+    openBarcodeScanner(barcode => {
+        invBarcode.value = barcode;
+    });
+});
+
+// --- Point of Sale (POS) ---
+let posCart = [];
+let selectedMemberDetails = null;
+let currentDrugLots = [];
+let formularyDataCache = [];
+let currentSelectedPOSDrug = null;
+let lastSaleData = null;
+
+const posForm = document.getElementById('posForm');
+const posMemberSearch = document.getElementById('posMemberSearch');
+const posMemberClear = document.getElementById('posMemberClear');
+const posMemberResults = document.getElementById('posMemberResults');
+const posSelectedMember = document.getElementById('posSelectedMember');
+const posDrugSearch = document.getElementById('posDrugSearch');
+const posDrugClear = document.getElementById('posDrugClear');
+const posDrugResults = document.getElementById('posDrugResults');
+const posLotSelect = document.getElementById('posLotSelect');
+const posQuantity = document.getElementById('posQuantity');
+const posAddToCartBtn = document.getElementById('posAddToCartBtn');
+const posCartItems = document.getElementById('posCartItems');
+const posTotalAmount = document.getElementById('posTotalAmount');
+const posCashReceived = document.getElementById('posCashReceived');
+const posChangeGiven = document.getElementById('posChangeGiven');
+const posResetCartBtn = document.getElementById('posResetCartBtn');
+const posSubmitSaleBtn = document.getElementById('posSubmitSaleBtn');
+const posResponseMsg = document.getElementById('posResponseMsg');
+const posScanBarcodeBtn = document.getElementById('posScanBarcodeBtn');
+const posDrugInfo = document.getElementById('posDrugInfo');
+const posPostSaleActions = document.getElementById('posPostSaleActions');
+const posPrintReceiptBtn = document.getElementById('posPrintReceiptBtn');
+const posNewSaleBtn = document.getElementById('posNewSaleBtn');
+
+
+function resetPOS() {
+    posCart = [];
+    selectedMemberDetails = null;
+    currentDrugLots = [];
+    currentSelectedPOSDrug = null;
+    lastSaleData = null;
+    posForm.reset();
+    posSelectedMember.textContent = 'ลูกค้าทั่วไป';
+    posMemberClear.classList.add('hidden');
+    posDrugClear.classList.add('hidden');
+    posDrugInfo.classList.add('hidden');
+    posSubmitSaleBtn.classList.remove('hidden');
+    posPostSaleActions.classList.add('hidden');
+    posResponseMsg.textContent = '';
+    renderPOSCart();
+}
+
+async function loadPOSData() { 
+    resetPOS(); 
+    try {
+        formularyDataCache = await apiCall('getDrugs');
+    } catch(e) {
+        showCustomAlert("ไม่สามารถโหลดข้อมูลยาสำหรับตรวจสอบ Drug Interaction/Allergy ได้");
+        formularyDataCache = [];
+    }
+}
+
+function renderPOSCart() {
+    posCartItems.innerHTML = '';
+    let total = 0;
+    posCart.forEach((item, index) => {
+        const row = document.createElement('tr');
+        const itemTotal = item.price * item.quantity;
+        total += itemTotal;
+        row.innerHTML = `
+            <td class="p-1">${item.tradeName}</td>
+            <td class="p-1 text-center">${item.lot}</td>
+            <td class="p-1 text-center">${item.quantity}</td>
+            <td class="p-1 text-right">${itemTotal.toFixed(2)}</td>
+            <td class="p-1 text-center">
+                <button type="button" class="text-red-500 hover:text-red-700" data-index="${index}"><i class="fa-solid fa-trash-can"></i></button>
+            </td>`;
+        posCartItems.appendChild(row);
+    });
+    posTotalAmount.textContent = `${total.toFixed(2)} บาท`;
+    posTotalAmount.dataset.total = total;
+    calculateChange();
+}
+
+function calculateChange() {
+    const total = parseFloat(posTotalAmount.dataset.total) || 0;
+    const cash = parseFloat(posCashReceived.value) || 0;
+    const change = cash - total;
+    posChangeGiven.textContent = change >= 0 ? change.toFixed(2) : '0.00';
+}
+
+async function loadMemberDetails(memberId) {
+    try {
+        selectedMemberDetails = await apiCall('getMemberDetails', { memberId });
+    } catch(e) {
+        showCustomAlert('ไม่สามารถโหลดข้อมูลประวัติการแพ้ยาของลูกค้าได้');
+        selectedMemberDetails = null;
+    }
+}
+
+posMemberSearch.addEventListener('input', debounce(async (e) => {
+    const term = e.target.value.trim();
+    posMemberClear.classList.toggle('hidden', term.length === 0);
+    if (term.length < 2) { posMemberResults.classList.add('hidden'); return; }
+    try {
+        const members = await apiCall('searchMembers', { term });
+        posMemberResults.innerHTML = '';
+        if (members.length > 0) {
+            members.forEach(member => {
+                const div = document.createElement('div');
+                div.textContent = `${member.fullName} - ${member.phone}`;
+                div.className = 'p-2 hover:bg-emerald-100 cursor-pointer';
+                div.onclick = () => {
+                    posSelectedMember.textContent = `สมาชิก: ${member.fullName}`;
+                    posMemberSearch.value = member.fullName;
+                    posMemberResults.classList.add('hidden');
+                    loadMemberDetails(member.memberId);
+                };
+                posMemberResults.appendChild(div);
+            });
+            posMemberResults.classList.remove('hidden');
+        } else {
+            posMemberResults.classList.add('hidden');
+        }
+    } catch(e) { /* handled by apiCall */ }
+}, 300));
+
+posMemberClear.addEventListener('click', () => {
+    posMemberSearch.value = '';
+    selectedMemberDetails = null;
+    posSelectedMember.textContent = 'ลูกค้าทั่วไป';
+    posMemberResults.classList.add('hidden');
+    posMemberClear.classList.add('hidden');
+    posMemberSearch.focus();
+});
+
+
+posDrugSearch.addEventListener('input', debounce(async (e) => {
+    const term = e.target.value.trim();
+    posDrugClear.classList.toggle('hidden', term.length === 0);
+    posLotSelect.innerHTML = '';
+    posDrugInfo.classList.add('hidden');
+    if (term.length < 2) { posDrugResults.classList.add('hidden'); return; }
+    try {
+        const drugs = await apiCall('searchAvailableDrugs', { term });
+        posDrugResults.innerHTML = '';
+        if (drugs.length > 0) {
+            drugs.forEach(drug => {
+                const div = document.createElement('div');
+                div.className = 'p-2 hover:bg-emerald-100 cursor-pointer flex items-center gap-3';
+                div.innerHTML = `
+                    <img src="${drug.imageUrl ? drug.imageUrl.replace('uc?id=', 'thumbnail?id=') : 'https://placehold.co/40x40/e2e8f0/64748b?text=N/A'}" class="w-10 h-10 object-cover rounded">
+                    <span>${drug.tradeName} (${drug.genericName}) - ${drug.strength}</span>
+                `;
+                div.onclick = () => selectPOSDrug(drug);
+                posDrugResults.appendChild(div);
+            });
+            posDrugResults.classList.remove('hidden');
+        } else {
+            posDrugResults.classList.add('hidden');
+        }
+    } catch(e) { /* handled by apiCall */ }
+}, 300));
+
+async function selectPOSDrug(drug) {
+    currentSelectedPOSDrug = drug;
+    posDrugSearch.value = drug.tradeName;
+    posDrugResults.classList.add('hidden');
+
+    posDrugInfo.innerHTML = `<p class="font-semibold">ข้อบ่งใช้:</p><p class="mb-2">${drug.indication || '-'}</p><p class="font-semibold">ข้อควรระวัง:</p><p>${drug.caution || '-'}</p>`;
+    posDrugInfo.classList.remove('hidden');
+
+    try {
+        currentDrugLots = await apiCall('getDrugLots', { drugId: drug.drugId });
+        posLotSelect.innerHTML = '';
+        if (currentDrugLots.length > 0) {
+            currentDrugLots.forEach(lot => {
+                const expiry = new Date(lot.expiryDate).toLocaleDateString('th-TH');
+                const option = new Option(`Lot: ${lot.lotNumber} (หมดอายุ: ${expiry}) - คงเหลือ ${lot.quantity} ชิ้น`, lot.inventoryId);
+                posLotSelect.add(option);
+            });
+        } else {
+            posLotSelect.add(new Option('ไม่พบ Lot ที่ขายได้', ''));
+        }
+    } catch(e) { /* handled by apiCall */ }
+}
+
+posDrugClear.addEventListener('click', () => {
+    posDrugSearch.value = '';
+    posLotSelect.innerHTML = '';
+    currentDrugLots = [];
+    currentSelectedPOSDrug = null;
+    posDrugResults.classList.add('hidden');
+    posDrugClear.classList.add('hidden');
+    posDrugInfo.classList.add('hidden');
+    posDrugSearch.focus();
+});
+posScanBarcodeBtn.addEventListener('click', () => {
+    openBarcodeScanner(async barcode => {
+        try {
+            const result = await apiCall('searchDrugByBarcode', { barcode: barcode });
+            if (result && result.drugId) {
+                selectPOSDrug(result);
+            } else {
+                showCustomAlert('ไม่พบยาสำหรับบาร์โค้ดนี้ในคลังสินค้า');
+            }
+        } catch(e) { /* Handled by apiCall */ }
+    });
+});
+
+async function checkAllergy(newItem) {
+    if (!newItem || !newItem.genericName || !selectedMemberDetails || !selectedMemberDetails.allergies) {
+        return null;
+    }
+    const newItemGeneric = newItem.genericName.toLowerCase().trim();
+    const matchedAllergy = selectedMemberDetails.allergies.find(
+        allergy => allergy.genericName.toLowerCase().trim() === newItemGeneric
+    );
+    return matchedAllergy || null;
+}
+
+async function checkDrugInteraction(newItem) {
+    if (!newItem || !newItem.genericName || formularyDataCache.length === 0) return null;
+    
+    const newItemGeneric = newItem.genericName.toLowerCase().trim();
+    const newItemFormulary = formularyDataCache.find(d => d.drugId === newItem.drugId);
+    if (!newItemFormulary) return null;
+
+    const newItemInteractions = [
+        newItemFormulary.interaction1, newItemFormulary.interaction2,
+        newItemFormulary.interaction3, newItemFormulary.interaction4,
+        newItemFormulary.interaction5
+    ].filter(Boolean).map(i => i.toLowerCase().trim());
+
+    for (const cartItem of posCart) {
+        const cartItemGeneric = cartItem.genericName.toLowerCase().trim();
+        if (newItemInteractions.includes(cartItemGeneric)) {
+            return { interactingDrug: cartItem.tradeName, reason: `${newItem.tradeName} ตีกับ ${cartItem.tradeName}` };
+        }
+        
+        const cartItemFormulary = formularyDataCache.find(d => d.drugId === cartItem.drugId);
+        if (cartItemFormulary) {
+             const cartItemInteractions = [
+                cartItemFormulary.interaction1, cartItemFormulary.interaction2,
+                cartItemFormulary.interaction3, cartItemFormulary.interaction4,
+                cartItemFormulary.interaction5
+            ].filter(Boolean).map(i => i.toLowerCase().trim());
+            if (cartItemInteractions.includes(newItemGeneric)) {
+                 return { interactingDrug: cartItem.tradeName, reason: `${cartItem.tradeName} ตีกับ ${newItem.tradeName}` };
+            }
+        }
+    }
+    return null;
+}
+
+
+posAddToCartBtn.addEventListener('click', async () => {
+    const selectedLotId = posLotSelect.value;
+    if (!selectedLotId || !currentSelectedPOSDrug) { 
+        showCustomAlert('กรุณาค้นหาและเลือกรายการยาก่อน'); 
+        return; 
+    }
+
+    // 1. Allergy Check
+    const allergy = await checkAllergy(currentSelectedPOSDrug);
+    if (allergy) {
+        const confirmed = await showConfirmation(`ลูกค้ามีประวัติแพ้ยา <strong>${allergy.genericName}</strong><br>(อาการ: ${allergy.reaction || 'ไม่ระบุ'})<br><br>คุณต้องการจ่ายยานี้ต่อไปหรือไม่?`, `<i class="fa-solid fa-triangle-exclamation text-red-500 mr-2"></i> คำเตือนการแพ้ยา`);
+        if (!confirmed) return;
+    }
+    
+    // 2. Interaction Check
+    const interaction = await checkDrugInteraction(currentSelectedPOSDrug);
+    if (interaction) {
+        const confirmed = await showConfirmation(`<strong>${interaction.reason}</strong><br><br>คุณต้องการเพิ่มยานี้ลงในตะกร้าต่อไปหรือไม่?`, `<i class="fa-solid fa-triangle-exclamation text-amber-500 mr-2"></i> คำเตือน Drug Interaction`);
+        if (!confirmed) return;
+    }
+
+    // 3. Add to cart
+    const lotData = currentDrugLots.find(l => l.inventoryId == selectedLotId);
+    if (!lotData) { showCustomAlert('ข้อมูล Lot ไม่ถูกต้อง กรุณาเลือกยาและ Lot อีกครั้ง'); return; }
+    
+    const quantity = parseInt(posQuantity.value);
+    if (quantity <= 0) { showCustomAlert('จำนวนต้องมากกว่า 0'); return; }
+    if (quantity > lotData.quantity) { showCustomAlert('จำนวนสินค้าไม่พอในสต็อก'); return; }
+    
+    posCart.push({
+        inventoryId: lotData.inventoryId,
+        drugId: currentSelectedPOSDrug.drugId,
+        tradeName: currentSelectedPOSDrug.tradeName,
+        genericName: currentSelectedPOSDrug.genericName,
+        lot: lotData.lotNumber,
+        price: lotData.sellingPrice,
+        quantity: quantity
+    });
+    renderPOSCart();
+    
+    posDrugSearch.value = '';
+    posLotSelect.innerHTML = '';
+    posQuantity.value = 1;
+    currentDrugLots = [];
+    currentSelectedPOSDrug = null;
+    posDrugClear.classList.add('hidden');
+    posDrugInfo.classList.add('hidden');
+});
+
+
+posCartItems.addEventListener('click', (e) => {
+    const button = e.target.closest('button');
+    if (button) {
+        const index = button.dataset.index;
+        posCart.splice(index, 1);
+        renderPOSCart();
+    }
+});
+
+posResetCartBtn.addEventListener('click', async () => {
+    if (posCart.length === 0) return;
+    const confirmed = await showConfirmation('คุณต้องการล้างตะกร้าสินค้าทั้งหมดใช่หรือไม่?');
+    if (confirmed) {
+        resetPOS();
+    }
+});
+posCashReceived.addEventListener('input', calculateChange);
+
+posForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (posCart.length === 0) { showCustomAlert('กรุณาเพิ่มสินค้าลงตะกร้าก่อน'); return; }
+    posSubmitSaleBtn.disabled = true;
+    posResponseMsg.textContent = '';
+    
+    const payload = {
+        memberId: selectedMemberDetails ? selectedMemberDetails.memberId : null,
+        pharmacist: document.getElementById('posPharmacist').value,
+        total: posTotalAmount.dataset.total,
+        items: posCart
+    };
+    try {
+        await apiPost('recordSale', payload);
+        
+        lastSaleData = {
+            items: [...posCart],
+            total: posTotalAmount.dataset.total,
+            cashReceived: posCashReceived.value,
+            changeGiven: posChangeGiven.textContent,
+            pharmacist: payload.pharmacist,
+            member: selectedMemberDetails ? selectedMemberDetails.fullName : 'ลูกค้าทั่วไป',
+            saleDate: new Date()
+        };
+
+        posResponseMsg.textContent = 'บันทึกการขายสำเร็จ!';
+        posResponseMsg.className = 'text-center text-sm font-semibold mt-2 text-emerald-600';
+        posSubmitSaleBtn.classList.add('hidden');
+        posPostSaleActions.classList.remove('hidden');
+        
+    } catch (error) {
+        posResponseMsg.textContent = `เกิดข้อผิดพลาด: ${error.message}`;
+        posResponseMsg.className = 'text-center text-sm font-semibold mt-2 text-red-600';
+        posSubmitSaleBtn.disabled = false;
+    }
+});
+
+posPrintReceiptBtn.addEventListener('click', () => printReceipt(lastSaleData));
+posNewSaleBtn.addEventListener('click', resetPOS);
+
+
+function printReceipt(saleData) {
+    if (!saleData) return;
+
+    let receiptContent = `
+        <html>
+        <head>
+            <title>ใบเสร็จรับเงิน</title>
+            <style>
+                body { font-family: 'Sarabun', sans-serif; margin: 0; padding: 20px; font-size: 12px; }
+                .receipt-container { width: 300px; margin: auto; }
+                h2, h3 { text-align: center; margin: 0; font-family: 'Kanit', sans-serif; }
+                p { margin: 2px 0; }
+                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                th, td { padding: 2px; }
+                .text-right { text-align: right; }
+                .totals { margin-top: 10px; }
+                hr { border: none; border-top: 1px dashed #000; margin: 10px 0; }
+            </style>
+        </head>
+        <body>
+            <div class="receipt-container">
+                <h3>ใบเสร็จรับเงิน/ใบกำกับภาษีอย่างย่อ</h3>
+                <p>วันที่: ${saleData.saleDate.toLocaleString('th-TH')}</p>
+                <p>ลูกค้า: ${saleData.member}</p>
+                <p>ผู้ขาย: ${saleData.pharmacist}</p>
+                <hr>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>รายการ</th>
+                            <th>จำนวน</th>
+                            <th class="text-right">ราคา</th>
+                            <th class="text-right">รวม</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+    `;
+
+    saleData.items.forEach(item => {
+        receiptContent += `
+            <tr>
+                <td>${item.tradeName}</td>
+                <td style="text-align: center;">${item.quantity}</td>
+                <td class="text-right">${Number(item.price).toFixed(2)}</td>
+                <td class="text-right">${(item.quantity * item.price).toFixed(2)}</td>
+            </tr>
+        `;
+    });
+
+    receiptContent += `
+                    </tbody>
+                </table>
+                <hr>
+                <div class="totals">
+                    <p><strong>ยอดรวม:</strong> <span style="float: right;">${Number(saleData.total).toFixed(2)}</span></p>
+                    <p>รับเงิน: <span style="float: right;">${Number(saleData.cashReceived).toFixed(2)}</span></p>
+                    <p>เงินทอน: <span style="float: right;">${saleData.changeGiven}</span></p>
+                </div>
+                <hr>
+                <p style="text-align: center;">ขอบคุณที่ใช้บริการ</p>
+            </div>
+        </body>
+        </html>
+    `;
+
+    const printWindow = window.open('', '', 'height=600,width=400');
+    printWindow.document.write(receiptContent);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
+}
+
+
+// --- Reports ---
+const reportTypeEl = document.getElementById('reportType');
+const datePickersContainer = document.getElementById('date-pickers-container');
+const dailyPicker = document.getElementById('daily-picker-container');
+const weeklyPicker = document.getElementById('weekly-picker-container');
+const monthlyPicker = document.getElementById('monthly-picker-container');
+const yearlyPicker = document.getElementById('yearly-picker-container');
+const reportDateEl = document.getElementById('reportDate');
+const reportWeekEl = document.getElementById('reportWeek');
+const reportMonthEl = document.getElementById('reportMonth');
+const reportYearEl = document.getElementById('reportYear');
+const generateReportBtn = document.getElementById('generateReportBtn');
+const reportResultTable = document.getElementById('reportResultTable');
+
+
+function loadReports() {
+    // Set default dates
+    const today = new Date();
+    reportDateEl.valueAsDate = today;
+    reportWeekEl.valueAsDate = today;
+    reportMonthEl.value = today.toISOString().substring(0, 7);
+    reportYearEl.value = today.getFullYear();
+    
+    updateReportPickers();
+    reportResultTable.innerHTML = `<p class="text-center text-slate-500">กรุณาเลือกประเภทรายงานและกด "สร้างรายงาน"</p>`;
+    document.getElementById('reportSummary').innerHTML = '';
+}
+
+function updateReportPickers() {
+    const selectedType = reportTypeEl.value;
+    dailyPicker.classList.toggle('hidden', selectedType !== 'dailySales');
+    weeklyPicker.classList.toggle('hidden', selectedType !== 'weeklySales');
+    monthlyPicker.classList.toggle('hidden', selectedType !== 'monthlySales');
+    yearlyPicker.classList.toggle('hidden', selectedType !== 'yearlySales');
+    datePickersContainer.classList.toggle('hidden', ['inventory', 'members'].includes(selectedType));
+}
+
+reportTypeEl.addEventListener('change', updateReportPickers);
+
+generateReportBtn.addEventListener('click', async () => {
+    const type = reportTypeEl.value;
+    let action = '';
+    let payload = {};
+    let options = {};
+
+    switch(type) {
+        case 'dailySales':
+            action = 'getSalesReport';
+            payload = { date: reportDateEl.value };
+            options = { summarize: { column: 'รวม', label: 'ยอดรวม' } };
+            break;
+        case 'weeklySales':
+            action = 'getWeeklySalesReport';
+            payload = { date: reportWeekEl.value };
+            options = { summarize: { column: 'รวม', label: 'ยอดรวม' } };
+            break;
+        case 'monthlySales':
+            action = 'getMonthlySalesReport';
+            const [year, month] = reportMonthEl.value.split('-');
+            payload = { year, month };
+            options = { summarize: { column: 'รวม', label: 'ยอดรวม' } };
+            break;
+        case 'yearlySales':
+            action = 'getYearlySalesReport';
+            payload = { year: reportYearEl.value };
+            options = { summarize: { column: 'รวม', label: 'ยอดรวม' } };
+            break;
+        case 'inventory':
+            action = 'getInventoryReport';
+            break;
+        case 'members':
+            action = 'getMemberReport';
+            break;
+        default:
+            showCustomAlert('กรุณาเลือกประเภทรายงาน');
+            return;
+    }
+
+    try {
+        const reportData = await apiCall(action, payload);
+        renderTable(reportResultTable, reportData, null, options);
+    } catch(e) {
+        reportResultTable.innerHTML = `<p class="text-red-500">ไม่สามารถสร้างรายงานได้</p>`;
+        document.getElementById('reportSummary').innerHTML = '';
+    }
+});
+
+// --- Settings ---
+const settingsScriptUrlEl = document.getElementById('settingsScriptUrl');
+const settingsSaveBtn = document.getElementById('settingsSaveBtn');
+const settingsStatusMsg = document.getElementById('settingsStatusMsg');
+
+function loadSettings() {
+    const storedUrl = localStorage.getItem('pharmacyAppScriptUrl');
+    if (storedUrl) {
+        settingsScriptUrlEl.value = storedUrl;
+    }
+}
+
+settingsSaveBtn.addEventListener('click', () => {
+    const newUrl = settingsScriptUrlEl.value.trim();
+    if (newUrl && newUrl.startsWith('https://script.google.com/')) {
+        localStorage.setItem('pharmacyAppScriptUrl', newUrl);
+        SCRIPT_URL = newUrl;
+        settingsStatusMsg.textContent = 'บันทึก URL สำเร็จ!';
+        setTimeout(() => { settingsStatusMsg.textContent = ''; }, 3000);
+        showCustomAlert('บันทึกการตั้งค่า URL สำเร็จแล้ว');
+    } else {
+        showCustomAlert('กรุณาใส่ URL ของ Google Apps Script Web App ให้ถูกต้อง');
+    }
+});
+
+// --- Barcode Scanner ---
+function openBarcodeScanner(callback) {
+    barcodeScannerCallback = callback;
+    barcodeScannerModal.classList.remove('hidden');
+    codeReader.decodeFromVideoDevice(undefined, 'barcode-video', (result, err) => {
+        if (result) {
+            if (barcodeScannerCallback) {
+                barcodeScannerCallback(result.getText());
+            }
+            closeBarcodeScanner();
+        }
+        if (err && !(err instanceof ZXing.NotFoundException)) {
+            console.error(err);
+            showCustomAlert('เกิดข้อผิดพลาดในการสแกนบาร์โค้ด');
+            closeBarcodeScanner();
+        }
+    });
+}
+
+function closeBarcodeScanner() {
+    codeReader.reset();
+    barcodeScannerModal.classList.add('hidden');
+    barcodeScannerCallback = null;
+}
+closeBarcodeScannerBtn.addEventListener('click', closeBarcodeScanner);
+</script>
+</body>
+</html>
+
