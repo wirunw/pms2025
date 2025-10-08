@@ -4,9 +4,9 @@
   "description": "Pharmacy Management System with SQLite backend",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node init_db.js && node server.js",
     "dev": "nodemon server.js",
-    "postinstall": "node init_db.js"
+    "init-db": "node ./init_db.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
