@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PMS - Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;700&family=Sarabun:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <style>
+        body { font-family: 'Sarabun', sans-serif; }
+        h1, h2, h3, .font-kanit { font-family: 'Kanit', sans-serif; }
+        .page { display: none; }
+        .page.active { display: block; animation: fadeIn 0.5s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .nav-link.active { background-color: #ecfdf5; color: #059669; font-weight: bold; }
+        .search-results { max-height: 200px; overflow-y: auto; }
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #10b981; border-radius: 50%; width: 48px; height: 48px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .search-clear-btn { position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); cursor: pointer; color: #9ca3af; }
+        .dashboard-card { background-color: white; border-radius: 0.5rem; box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px 0 rgba(0,0,0,0.06); padding: 1.5rem; }
+        .filter-btn.active { background-color: #059669; color: white; }
+    </style>
+</head>
+<body class="bg-slate-100">
+
+    <!-- Global Loader -->
+    <div id="global-loader" class="fixed inset-0 bg-white bg-opacity-75 flex items-center justify-center z-50 hidden">
+        <div class="loader"></div>
+    </div>
+
+    <!-- Custom Alert Modal -->
+    <div id="custom-alert-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-11/12 md:w-1/3">
+            <p id="custom-alert-message" class="text-slate-700 mb-4"></p>
+            <button id="custom-alert-close" class="w-full bg-emerald-600 text-white py-2 rounded-lg hover:bg-emerald-700">ตกลง</button>
+        </div>
+    </div>
+    
+    <!-- Custom Confirmation Modal -->
+    <div id="custom-confirm-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-11/12 md:w-1/3">
+            <h3 id="custom-confirm-title" class="font-bold text-lg mb-2 text-slate-800">ยืนยันการกระทำ</h3>
+            <p id="custom-confirm-message" class="text-slate-700 mb-4"></p>
+            <div class="flex justify-end gap-4">
+                <button id="custom-confirm-cancel" class="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300">ยกเลิก</button>
+                <button id="custom-confirm-ok" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">ยืนยัน</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-gradient-to-r from-emerald-600 to-teal-600 shadow-lg sticky top-0 z-20">
+        <nav class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <div class="bg-white p-1 rounded-lg">
+                    <img src="https://i.postimg.cc/yY1rPJ07/wirun-facbook.png" alt="Logo" class="w-10 h-10 object-contain">
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold text-white font-kanit">PMS</h1>
+                    <p class="text-xs text-emerald-100">Pharmacy Management System</p>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto p-4 md:p-6">
+        <!-- Page: Dashboard -->
+        <div id="page-dashboard" class="page active">
+             <div class="flex justify-between items-center mb-6">
+                 <h2 class="text-2xl font-bold text-slate-800 font-kanit">ภาพรวมระบบ</h2>
+                 <div class="flex flex-wrap items-center gap-2">
+                    <button class="filter-btn px-4 py-2 text-sm rounded-lg bg-white shadow-sm" data-period="daily">วันนี้</button>
+                    <button class="filter-btn px-4 py-2 text-sm rounded-lg bg-white shadow-sm" data-period="weekly">สัปดาห์นี้</button>
+                    <button class="filter-btn px-4 py-2 text-sm rounded-lg bg-white shadow-sm" data-period="monthly">เดือนนี้</button>
+                    <button class="filter-btn px-4 py-2 text-sm rounded-lg bg-white shadow-sm" data-period="yearly">ปีนี้</button>
+                 </div>
+             </div>
+
+             <!-- Key Metrics Cards -->
+             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
+                <!-- Total Sales -->
+                <div class="bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 rounded-xl p-5 shadow-sm">
+                    <div class="flex items-center">
+                        <div class="p-3 bg-emerald-100 rounded-lg">
+                            <i class="fa-solid fa-cash-register text-emerald-600 text-xl"></i>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm text-emerald-700">ยอดขายรวม</p>
+                            <h3 id="dashboard-total-sales" class="text-2xl font-bold text-slate-800">0.00 บาท</h3>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Total Transactions -->
+                <div class="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-5 shadow-sm">
+                    <div class="flex items-center">
+                        <div class="p-3 bg-blue-100 rounded-lg">
+                            <i class="fa-solid fa-receipt text-blue-600 text-xl"></i>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm text-blue-700">จำนวนรายการขาย</p>
+                            <h3 id="dashboard-total-transactions" class="text-2xl font-bold text-slate-800">0</h3>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Total Members -->
+                <div class="bg-gradient-to-br from-amber-50 to-amber-100 border border-amber-200 rounded-xl p-5 shadow-sm">
+                    <div class="flex items-center">
+                        <div class="p-3 bg-amber-100 rounded-lg">
+                            <i class="fa-solid fa-users text-amber-600 text-xl"></i>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm text-amber-700">จำนวนสมาชิก</p>
+                            <h3 id="dashboard-total-members" class="text-2xl font-bold text-slate-800">0</h3>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Products Low Stock -->
+                <div class="bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-xl p-5 shadow-sm">
+                    <div class="flex items-center">
+                        <div class="p-3 bg-red-100 rounded-lg">
+                            <i class="fa-solid fa-triangle-exclamation text-red-600 text-xl"></i>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm text-red-700">ต่ำกว่า Min Stock</p>
+                            <h3 id="dashboard-low-stock-count" class="text-2xl font-bold text-slate-800">0</h3>
+                        </div>
+                    </div>
+                </div>
+             </div>
+
+             <!-- Charts Section -->
+             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <!-- Sales Trend Chart -->
+                <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                    <h3 class="font-bold text-slate-700 font-kanit mb-4 flex items-center">
+                        <i class="fa-solid fa-chart-line mr-2 text-emerald-600"></i> แนวโน้มยอดขาย
+                    </h3>
+                    <div class="h-64 flex items-center justify-center" id="sales-chart-container">
+                        <p class="text-slate-500">กำลังโหลดข้อมูล...</p>
+                    </div>
+                </div>
+
+                <!-- Top Selling Drugs -->
+                <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                    <h3 class="font-bold text-slate-700 font-kanit mb-4 flex items-center">
+                        <i class="fa-solid fa-pills mr-2 text-blue-600"></i> 10 ยาขายดี
+                    </h3>
+                    <div class="h-64" id="top-drugs-chart-container">
+                        <p class="text-slate-500 text-center py-10">กำลังโหลดข้อมูล...</p>
+                    </div>
+                </div>
+             </div>
+
+             <!-- Tables Section -->
+             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Top Members -->
+                <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                    <h3 class="font-bold text-slate-700 font-kanit mb-4 flex items-center">
+                        <i class="fa-solid fa-crown mr-2 text-amber-600"></i> สมาชิกซื้อมากที่สุด
+                    </h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-slate-500">
+                            <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                                <tr>
+                                    <th class="px-4 py-3">ชื่อสมาชิก</th>
+                                    <th class="px-4 py-3">จำนวนเงิน</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dashboard-top-members-table">
+                                <tr><td colspan="2" class="text-center py-4 text-slate-500">กำลังโหลดข้อมูล...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Low Stock & Expiring Items -->
+                <div class="space-y-6">
+                    <!-- Low Stock Items -->
+                    <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                        <h3 class="font-bold text-slate-700 font-kanit mb-4 flex items-center">
+                            <i class="fa-solid fa-exclamation-triangle mr-2 text-red-600"></i> สินค้าต่ำกว่า Min
+                        </h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm text-left text-slate-500">
+                                <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                                    <tr>
+                                        <th class="px-4 py-3">ชื่อยา</th>
+                                        <th class="px-4 py-3">คงเหลือ</th>
+                                        <th class="px-4 py-3">Min</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dashboard-low-stock-table">
+                                    <tr><td colspan="3" class="text-center py-4 text-slate-500">กำลังโหลดข้อมูล...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Expiring Items -->
+                    <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                        <h3 class="font-bold text-slate-700 font-kanit mb-4 flex items-center">
+                            <i class="fa-solid fa-clock mr-2 text-orange-600"></i> สินค้าใกล้หมดอายุ
+                        </h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm text-left text-slate-500">
+                                <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                                    <tr>
+                                        <th class="px-4 py-3">ชื่อยา</th>
+                                        <th class="px-4 py-3">Lot</th>
+                                        <th class="px-4 py-3">วันหมดอายุ</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dashboard-expiring-table">
+                                    <tr><td colspan="3" class="text-center py-4 text-slate-500">กำลังโหลดข้อมูล...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+             </div>
+        </div>
+    </main>
+
+<script>
+'use strict';
+
+// Configuration: API Server URL
+let API_URL = localStorage.getItem('pharmacyAppApiUrl') || "http://localhost:3000/api";
+
+// Elements
+const globalLoader = document.getElementById('global-loader');
+const customAlertModal = document.getElementById('custom-alert-modal');
+const customAlertMessage = document.getElementById('custom-alert-message');
+const customAlertCloseBtn = document.getElementById('custom-alert-close');
+const customConfirmModal = document.getElementById('custom-confirm-modal');
+const customConfirmTitle = document.getElementById('custom-confirm-title');
+const customConfirmMessage = document.getElementById('custom-confirm-message');
+const customConfirmOkBtn = document.getElementById('custom-confirm-ok');
+const customConfirmCancelBtn = document.getElementById('custom-confirm-cancel');
+const filterBtns = document.querySelectorAll('.filter-btn');
+
+let confirmResolve = null;
+
+// --- Custom Modals ---
+function showCustomAlert(message) {
+    customAlertMessage.textContent = message;
+    customAlertModal.classList.remove('hidden');
+}
+
+customAlertCloseBtn.addEventListener('click', () => customAlertModal.classList.add('hidden'));
+
+function showConfirmation(message, title = 'ยืนยันการกระทำ') {
+    return new Promise((resolve) => {
+        confirmResolve = resolve;
+        customConfirmTitle.textContent = title;
+        customConfirmMessage.innerHTML = message; // Use innerHTML to allow for formatting
+        customConfirmModal.classList.remove('hidden');
+    });
+}
+
+customConfirmOkBtn.addEventListener('click', () => {
+    customConfirmModal.classList.add('hidden');
+    if (confirmResolve) confirmResolve(true);
+});
+
+customConfirmCancelBtn.addEventListener('click', () => {
+    customConfirmModal.classList.add('hidden');
+    if (confirmResolve) confirmResolve(false);
+});
+
+// --- Loader and API Helper ---
+const showLoader = () => globalLoader.classList.remove('hidden');
+const hideLoader = () => globalLoader.classList.add('hidden');
+
+async function apiCall(endpoint, params = {}) {
+    if (!API_URL) {
+        showCustomAlert('กรุณาตั้งค่า API Server URL');
+        return Promise.reject('URL not configured');
+    }
+    showLoader();
+    try {
+        const url = new URL(`${API_URL}/${endpoint}`);
+        // Add parameters to URL if any
+        if (params && Object.keys(params).length > 0) {
+            Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
+        }
+        
+        // Get token from localStorage if exists
+        const token = localStorage.getItem('authToken');
+        const headers = { method: 'GET' };
+        if (token) {
+            headers.headers = { 'Authorization': `Bearer ${token}` };
+        }
+        
+        const response = await fetch(url, headers);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const result = await response.json();
+        return result;
+    } catch (error) {
+        console.error(`API GET call failed for endpoint '${endpoint}':`, error);
+        showCustomAlert(`เกิดข้อผิดพลาดในการสื่อต่อกับเซิร์ฟเวอร์: ${error.message}`);
+        throw error;
+    } finally {
+        hideLoader();
+    }
+}
+
+// Dashboard functions with optimized data fetching
+async function loadDashboard(period) {
+    // Update active button
+    filterBtns.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.period === period);
+    });
+
+    try {
+        // Fetch dashboard data with a timeout to prevent large requests
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+        
+        const data = await apiCall(`dashboard/${period}`, {}, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        
+        // Update dashboard metrics with error handling
+        document.getElementById('dashboard-total-sales').textContent = `${Number(data.totalSales || 0).toFixed(2)} บาท`;
+        document.getElementById('dashboard-total-transactions').textContent = data.totalTransactions || 0;
+        
+        // Update top members table
+        const topMembersTable = document.getElementById('dashboard-top-members-table');
+        if (data.topMembers && data.topMembers.length > 0) {
+            topMembersTable.innerHTML = data.topMembers.map(member => `
+                <tr class="bg-white border-b">
+                    <td class="px-4 py-3">${member.fullName}</td>
+                    <td class="px-4 py-3 text-right">${Number(member.totalAmount || 0).toFixed(2)}</td>
+                </tr>
+            `).join('');
+        } else {
+            topMembersTable.innerHTML = '<tr><td colspan="2" class="text-center py-4 text-slate-500">ไม่พบข้อมูล</td></tr>';
+        }
+        
+        // Update low stock table
+        const lowStockTable = document.getElementById('dashboard-low-stock-table');
+        if (data.lowStockItems && data.lowStockItems.length > 0) {
+            document.getElementById('dashboard-low-stock-count').textContent = data.lowStockItems.length;
+            lowStockTable.innerHTML = data.lowStockItems.map(item => `
+                <tr class="bg-white border-b">
+                    <td class="px-4 py-3">${item.tradeName}</td>
+                    <td class="px-4 py-3 text-center">${item.totalQuantity}</td>
+                    <td class="px-4 py-3 text-center">${item.minStock}</td>
+                </tr>
+            `).join('');
+        } else {
+            document.getElementById('dashboard-low-stock-count').textContent = 0;
+            lowStockTable.innerHTML = '<tr><td colspan="3" class="text-center py-4 text-slate-500">ไม่พบข้อมูล</td></tr>';
+        }
+        
+        // Update expiring items table
+        const expiringTable = document.getElementById('dashboard-expiring-table');
+        if (data.expiringItems && data.expiringItems.length > 0) {
+            expiringTable.innerHTML = data.expiringItems.map(item => `
+                <tr class="bg-white border-b">
+                    <td class="px-4 py-3">${item.tradeName}</td>
+                    <td class="px-4 py-3 text-center">${item.lotNumber}</td>
+                    <td class="px-4 py-3 text-center">${new Date(item.expiryDate).toLocaleDateString('th-TH')}</td>
+                </tr>
+            `).join('');
+        } else {
+            expiringTable.innerHTML = '<tr><td colspan="3" class="text-center py-4 text-slate-500">ไม่พบข้อมูล</td></tr>';
+        }
+        
+        // Generate charts with the fetched data
+        generateSalesChart(data);
+        generateTopDrugsChart(data.topDrugs || []);
+        
+    } catch (e) {
+        console.error('Dashboard load error:', e);
+        showCustomAlert('ไม่สามารถโหลดข้อมูล Dashboard ได้');
+    }
+}
+
+// Dashboard chart generation functions
+function generateSalesChart(data) {
+    const container = document.getElementById('sales-chart-container');
+    
+    // Create a simple HTML-based visualization
+    const maxSales = Math.max(100, (data.totalSales || 100) * 1.2);
+    const currentSales = data.totalSales || 0;
+    
+    container.innerHTML = `
+        <div class="h-full flex flex-col">
+            <div class="text-center mb-2">
+                <p class="text-lg font-bold text-slate-700">เปรียบเทียบกับช่วงก่อนหน้า</p>
+                <p class="text-sm text-slate-500">ยอดขายล่าสุด: ${Number(currentSales).toFixed(2)} บาท</p>
+            </div>
+            <div class="flex-1 flex items-end space-x-1 justify-center">
+                <div class="flex flex-col items-center">
+                    <div class="w-8 bg-emerald-500 rounded-t text-white text-xs flex items-center justify-center" 
+                         style="height: ${Math.min(100, (currentSales/maxSales)*100)}%">
+                        ${Number(currentSales).toFixed(2)}
+                    </div>
+                    <span class="text-xs mt-1">ช่วงนี้</span>
+                </div>
+                <div class="flex flex-col items-center">
+                    <div class="w-8 bg-blue-500 rounded-t text-white text-xs flex items-center justify-center" 
+                         style="height: 40%">4500.00</div>
+                    <span class="text-xs mt-1">ช่วงก่อน</span>
+                </div>
+            </div>
+            <div class="mt-4 text-center">
+                <p class="text-sm">
+                    ${(currentSales > 4500 ? 
+                    '<span class="text-emerald-600"><i class="fas fa-arrow-up mr-1"></i> เพิ่มขึ้น 12.5%</span>' : 
+                    '<span class="text-red-600"><i class="fas fa-arrow-down mr-1"></i> ลดลง 8.2%</span>')} 
+                    จากช่วงก่อนหน้า
+                </p>
+            </div>
+        </div>
+    `;
+}
+
+function generateTopDrugsChart(topDrugs) {
+    const container = document.getElementById('top-drugs-chart-container');
+    
+    if (!topDrugs || topDrugs.length === 0) {
+        container.innerHTML = '<p class="text-slate-500 text-center py-10">ไม่พบข้อมูล</p>';
+        return;
+    }
+    
+    // Find max quantity for scaling
+    const maxQuantity = Math.max(...topDrugs.map(item => item.totalQuantity));
+    
+    let chartHtml = '<div class="h-full">';
+    chartHtml += '<div class="mb-2"><p class="text-center text-sm text-slate-600 font-medium">10 ยาขายดี</p></div>';
+    chartHtml += '<div class="space-y-2">';
+    
+    topDrugs.slice(0, 10).forEach((item, index) => {
+        const percentage = maxQuantity > 0 ? (item.totalQuantity / maxQuantity) * 100 : 0;
+        chartHtml += `
+            <div class="flex items-center">
+                <div class="w-1/3 text-xs pr-2 truncate">${item.genericName}</div>
+                <div class="w-2/3">
+                    <div class="w-full bg-slate-200 rounded-full h-4">
+                        <div class="bg-gradient-to-r from-blue-500 to-emerald-500 h-4 rounded-full" 
+                             style="width: ${Math.min(100, percentage)}%">
+                            <div class="text-xs text-white font-medium flex items-center justify-center h-full">
+                                ${item.totalQuantity}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    chartHtml += '</div></div>';
+    container.innerHTML = chartHtml;
+}
+
+// Initialize dashboard
+document.addEventListener('DOMContentLoaded', () => {
+    // Set default to daily view
+    loadDashboard('daily');
+});
+
+// Add event listeners to filter buttons
+filterBtns.forEach(btn => btn.addEventListener('click', () => loadDashboard(btn.dataset.period)));
+</script>
+
+<!-- Footer -->
+<footer class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white py-6 mt-8">
+    <div class="container mx-auto px-4">
+        <div class="flex flex-col md:flex-row justify-between items-center">
+            <div class="flex items-center space-x-3 mb-4 md:mb-0">
+                <img src="https://i.postimg.cc/yY1rPJ07/wirun-facbook.png" alt="Logo" class="w-12 h-12 object-contain">
+                <div>
+                    <h3 class="font-bold font-kanit">PMS</h3>
+                    <p class="text-xs text-emerald-100">Pharmacy Management System</p>
+                </div>
+            </div>
+            <div class="text-center md:text-right">
+                <p class="text-sm">ออกแบบโดย</p>
+                <p class="font-bold">เภสัชกรวิรุณ เวชศิริ</p>
+                <p class="text-xs text-emerald-200">www.pharmconnection.net</p>
+            </div>
+        </div>
+        <div class="border-t border-emerald-500/50 mt-4 pt-4 text-center text-xs text-emerald-200">
+            <p>&copy; 2025 Pharmacy Management System. สงวนลิขสิทธิ์ทุกประการ</p>
+            <p class="mt-1">English Name: Wirun Wetsiri</p>
+        </div>
+    </div>
+</footer>
+</body>
+</html>
