@@ -903,7 +903,7 @@
                 <div class="space-y-4">
                     <div>
                         <label for="settingsScriptUrl" class="block text-sm font-medium text-slate-700">API Server URL</label>
-                        <input type="text" id="settingsScriptUrl" placeholder="http://localhost:3000" class="mt-1 block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500">
+                        <input type="text" id="settingsScriptUrl" placeholder="https://your-domain.railway.app" class="mt-1 block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500">
                     </div>
                     <button id="settingsSaveBtn" class="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700">บันทึกการตั้งค่า</button>
                     <p id="settingsStatusMsg" class="text-sm text-emerald-600 mt-2"></p>
@@ -930,7 +930,7 @@
 // ===================================================================================
 // ===== CONFIGURATION: API Server URL (Default to local server) =====================
 // ===================================================================================
-let API_URL = localStorage.getItem('pharmacyAppApiUrl') || "http://localhost:3000/api";
+let API_URL = localStorage.getItem('pharmacyAppApiUrl') || (window.location.origin + "/api");
 // ===================================================================================
 
 // --- Basic Setup, Navigation, and Modals ---
@@ -2359,8 +2359,8 @@ function loadSettings() {
         API_URL = storedUrl;
     } else {
         // กรณีไม่มีการตั้งค่าก่อนหน้านี้ ใช้ค่าเริ่มต้น
-        settingsScriptUrlEl.value = 'http://localhost:3000/api';
-        API_URL = 'http://localhost:3000/api';
+        settingsScriptUrlEl.value = window.location.origin + '/api';
+        API_URL = window.location.origin + '/api';
     }
 }
 
