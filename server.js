@@ -355,6 +355,8 @@ app.post('/api/sales', async (req, res) => {
 
 // API สำหรับ Dashboard
 app.get('/api/dashboard/:period', async (req, res) => {
+  console.log('Dashboard API called with period:', req.params.period);
+  console.log('Request headers:', req.headers);
   try {
     const period = req.params.period;
     
@@ -499,7 +501,7 @@ app.get('/api/dashboard/:period', async (req, res) => {
     res.json(dashboardData);
   } catch (error) {
     console.error('Dashboard API error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error.message, details: error.stack });
   }
 });
 
