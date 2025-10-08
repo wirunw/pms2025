@@ -1184,7 +1184,75 @@ app.get('/api/sales', authenticateToken, async (req, res) => {
   }
 });
 
-// รัน server
-app.listen(port, () => {
-  console.log(`Server กำลังรันที่ http://localhost:${port}`);
+// ฟังก์ชันสำหรับตรวจสอบและสร้างบัญชี admin หากยังไม่มี
+function initializeDatabase() {
+  return new Promise((resolve, reject) => {
+    // สร้างบัญชี admin หากยังไม่มี
+    db.get("SELECT * FROM Users WHERE username = 'admin'", (err, row) => {
+      if (err) {
+        console.error('Error checking admin user:', err.message);
+        resolve();
+      } else if (!row) {
+        // ไม่มีบัญชี admin อยู่แล้ว ให้สร้างใหม่
+        const stmt = db.prepare(`INSERT INTO Users (username, password, fullName, role) VALUES (?, ?, ?, ?)`);
+        stmt.run(['admin', 'admin123', 'Administrator', 'admin'], function(err) {
+          if (err) {
+            console.error('Error creating admin user:', err.message);
+          } else {
+            console.log('Created admin user successfully');
+            console.log('Username: admin');
+            console.log('Password: admin123');
+          }
+        });
+        stmt.finalize();
+      } else {
+        console.log('Admin user already exists');
+      }
+      
+      // เพิ่มข้อมูลตัวอย่าง Members หากยังไม่มี
+      db.get("SELECT COUNT(*) as count FROM Members", (err, row) => {
+        if (err) {
+          console.error('Error checking members:', err.message);
+        } else if (row.count === 0) {
+          // เพิ่มข้อมูลตัวอย่าง Members
+          const stmt = db.prepare(`
+            INSERT INTO Members (memberId, fullName, nationalId, dob, phone, allergies, disease) 
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+          `);
+          stmt.run(['MEM001', 'สมชาย ใจดี', '1234567890123', '1980-05-15', '0812345678', '[]', 'ความดันโลหิตสูง']);
+          stmt.finalize();
+          console.log('Added sample member data');
+        }
+
+        // เพิ่มข้อมูลตัวอย่าง Formulary หากยังไม่มี
+        db.get("SELECT COUNT(*) as count FROM Formulary", (err, row) => {
+          if (err) {
+            console.error('Error checking formulary:', err.message);
+          } else if (row.count === 0) {
+            // เพิ่มข้อมูลตัวอย่าง Formulary
+            const stmt = db.prepare(`
+              INSERT INTO Formulary (drugId, tradeName, genericName, legalCategory, pharmaCategory, strength, unit, indication, caution) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+            stmt.run(['DRG001', 'พาราเซตามอล', 'Paracetamol', 'ยาบรรจุเสร็จ', 'ยาแก้ปวด ลดไข้', '500mg', 'เม็ด', 'ลดไข้ แก้ปวด', 'ควรใช้พร้อมอาหาร']);
+            stmt.finalize();
+            console.log('Added sample drug data');
+          }
+          
+          resolve();
+        });
+      });
+    });
+  });
+}
+
+// รันการ initialize database ก่อนเปิด server
+initializeDatabase().then(() => {
+  // รัน server
+  app.listen(port, () => {
+    console.log(`Server กำลังรันที่ http://localhost:${port}`);
+  });
+}).catch(err => {
+  console.error('Error initializing database:', err);
+  process.exit(1);
 });
