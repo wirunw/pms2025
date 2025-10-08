@@ -1046,7 +1046,7 @@ customConfirmCancelBtn.addEventListener('click', () => {
 const showLoader = () => globalLoader.classList.remove('hidden');
 const hideLoader = () => globalLoader.classList.add('hidden');
 
-async function apiCall(endpoint, params = {}) {
+async function apiCall(endpoint, params = {}, includeAuth = true, options = {}) {
     if (!API_URL) {
         showCustomAlert('กรุณาตั้งค่า API Server URL ในหน้า "ตั้งค่า"');
         return Promise.reject('URL not configured');
@@ -1056,14 +1056,20 @@ async function apiCall(endpoint, params = {}) {
         const url = new URL(`${API_URL}/${endpoint}`);
         Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
         
-        // ดึง token จาก localStorage ถ้ามี
-        const token = localStorage.getItem('authToken');
         const headers = { method: 'GET' };
-        if (token) {
+        // ดึง token จาก localStorage ถ้ามี และ includeAuth ถูกตั้งเป็น true
+        const token = localStorage.getItem('authToken');
+        if (token && includeAuth) {
             headers.headers = { 'Authorization': `Bearer ${token}` };
         }
         
-        const response = await fetch(url, headers);
+        // เพิ่ม options อื่นๆ เช่น signal ถ้ามี
+        const fetchOptions = { ...headers, ...options };
+        if (options.signal) {
+            fetchOptions.signal = options.signal;
+        }
+        
+        const response = await fetch(url, fetchOptions);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const result = await response.json();
         return result;
@@ -1192,7 +1198,7 @@ async function loadDashboard(period) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
         
-        const data = await apiCall(`dashboard/${period}`, {}, { signal: controller.signal });
+        const data = await apiCall(`dashboard/${period}`, {}, false, { signal: controller.signal });
         clearTimeout(timeoutId);
         
         // Update dashboard metrics
