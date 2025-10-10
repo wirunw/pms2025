@@ -2376,6 +2376,516 @@ app.get('/api/sales', authenticateToken, async (req, res) => {
   }
 });
 
+const REPLACEMENT_CHAR = '\uFFFD';
+
+const THAI_FORMULARY_SEED = [
+  {
+    drugId: 'DRG001',
+    tradeName: 'พาราเซตามอล 500 มก.',
+    genericName: 'Paracetamol',
+    legalCategory: 'ยาสามัญประจำบ้าน',
+    pharmaCategory: 'ยาแก้ปวด ลดไข้',
+    strength: '500 mg',
+    unit: 'เม็ด',
+    indication: 'ลดไข้ บรรเทาอาการปวดเล็กน้อย',
+    caution: 'หลีกเลี่ยงการใช้เกินขนาดและแอลกอฮอล์',
+    minStock: 30,
+    maxStock: 300
+  },
+  {
+    drugId: 'DRG002',
+    tradeName: 'ไอบูโพรเฟน 400 มก.',
+    genericName: 'Ibuprofen',
+    legalCategory: 'ยาบรรจุเสร็จ',
+    pharmaCategory: 'ยาแก้อักเสบ ลดไข้',
+    strength: '400 mg',
+    unit: 'เม็ด',
+    indication: 'บรรเทาปวดอักเสบจากกล้ามเนื้อและข้อ',
+    caution: 'รับประทานพร้อมอาหารเพื่อลดการระคายเคืองกระเพาะ',
+    minStock: 20,
+    maxStock: 200
+  },
+  {
+    drugId: 'DRG003',
+    tradeName: 'ไดโคลฟีแนค โซเดียม',
+    genericName: 'Diclofenac',
+    legalCategory: 'ยาควบคุมพิเศษ',
+    pharmaCategory: 'ยาแก้อักเสบลดปวด (NSAIDs)',
+    strength: '25 mg',
+    unit: 'เม็ด',
+    indication: 'บรรเทาปวดข้อ ปวดกล้ามเนื้อ',
+    caution: 'ควรระวังในผู้ป่วยโรคไตและโรคกระเพาะ',
+    minStock: 10,
+    maxStock: 120
+  },
+  {
+    drugId: 'DRG004',
+    tradeName: 'นาพรอกเซน 250 มก.',
+    genericName: 'Naproxen',
+    legalCategory: 'ยาควบคุมพิเศษ',
+    pharmaCategory: 'ยาแก้อักเสบลดปวด (NSAIDs)',
+    strength: '250 mg',
+    unit: 'เม็ด',
+    indication: 'รักษาอาการปวดจากข้อเสื่อมและข้ออักเสบ',
+    caution: 'ไม่ควรใช้ร่วมกับยาในกลุ่ม NSAIDs อื่น',
+    minStock: 10,
+    maxStock: 120
+  },
+  {
+    drugId: 'DRG005',
+    tradeName: 'แอสไพริน 81 มก.',
+    genericName: 'Acetylsalicylic Acid',
+    legalCategory: 'ยาควบคุมพิเศษ',
+    pharmaCategory: 'ยาต้านเกล็ดเลือด',
+    strength: '81 mg',
+    unit: 'เม็ดเคลือบ',
+    indication: 'ลดความเสี่ยงหัวใจขาดเลือดเฉียบพลัน',
+    caution: 'ห้ามใช้ในเด็กที่มีไข้หรือหญิงตั้งครรภ์ไตรมาสสุดท้าย',
+    minStock: 10,
+    maxStock: 150
+  },
+  {
+    drugId: 'DRG006',
+    tradeName: 'อะม็อกซีซิลลิน 500 มก.',
+    genericName: 'Amoxicillin',
+    legalCategory: 'ยาปฏิชีวนะ',
+    pharmaCategory: 'เพนิซิลลิน',
+    strength: '500 mg',
+    unit: 'แคปซูล',
+    indication: 'รักษาการติดเชื้อทางเดินหายใจและผิวหนัง',
+    caution: 'รับประทานให้ครบคอร์สแม้อาการดีขึ้น',
+    minStock: 20,
+    maxStock: 180
+  },
+  {
+    drugId: 'DRG007',
+    tradeName: 'คลอกซาซิลลิน 500 มก.',
+    genericName: 'Cloxacillin',
+    legalCategory: 'ยาปฏิชีวนะ',
+    pharmaCategory: 'เพนิซิลลิน',
+    strength: '500 mg',
+    unit: 'แคปซูล',
+    indication: 'รักษาการติดเชื้อจากเชื้อสแตฟีโลคอคคัส',
+    caution: 'ควรรับประทานก่อนอาหาร 1 ชั่วโมง',
+    minStock: 15,
+    maxStock: 120
+  },
+  {
+    drugId: 'DRG008',
+    tradeName: 'อะม็อกซีซิลลิน/คลาวูลาเนต 625 มก.',
+    genericName: 'Amoxicillin + Clavulanate',
+    legalCategory: 'ยาปฏิชีวนะ',
+    pharmaCategory: 'เพนิซิลลินผสม',
+    strength: '500/125 mg',
+    unit: 'เม็ด',
+    indication: 'รักษาการติดเชื้อทางเดินหายใจรุนแรง',
+    caution: 'รับประทานพร้อมอาหารเพื่อลดอาการคลื่นไส้',
+    minStock: 10,
+    maxStock: 100
+  },
+  {
+    drugId: 'DRG009',
+    tradeName: 'อะซิโทรไมซิน 250 มก.',
+    genericName: 'Azithromycin',
+    legalCategory: 'ยาปฏิชีวนะ',
+    pharmaCategory: 'มาโครไลด์',
+    strength: '250 mg',
+    unit: 'แคปซูล',
+    indication: 'รักษาการติดเชื้อระบบทางเดินหายใจและผิวหนัง',
+    caution: 'รับประทานวันละครั้งตามคำแนะนำแพทย์',
+    minStock: 10,
+    maxStock: 90
+  },
+  {
+    drugId: 'DRG010',
+    tradeName: 'คลาริโทรไมซิน 500 มก.',
+    genericName: 'Clarithromycin',
+    legalCategory: 'ยาปฏิชีวนะ',
+    pharmaCategory: 'มาโครไลด์',
+    strength: '500 mg',
+    unit: 'เม็ด',
+    indication: 'รักษาการติดเชื้อทางเดินหายใจ ลำไส้ และผิวหนัง',
+    caution: 'ระวังการใช้ร่วมกับยาลดไขมันกลุ่มสแตติน',
+    minStock: 10,
+    maxStock: 90
+  },
+  {
+    drugId: 'DRG011',
+    tradeName: 'เลโวฟลอกซาซิน 500 มก.',
+    genericName: 'Levofloxacin',
+    legalCategory: 'ยาปฏิชีวนะ',
+    pharmaCategory: 'ควิโนโลนรุ่นใหม่',
+    strength: '500 mg',
+    unit: 'เม็ด',
+    indication: 'รักษาปอดอักเสบและติดเชื้อระบบทางเดินปัสสาวะรุนแรง',
+    caution: 'หลีกเลี่ยงการใช้ร่วมกับยาต้านกรดที่มีอะลูมิเนียม',
+    minStock: 8,
+    maxStock: 80
+  },
+  {
+    drugId: 'DRG012',
+    tradeName: 'ซิโพรฟลอกซาซิน 500 มก.',
+    genericName: 'Ciprofloxacin',
+    legalCategory: 'ยาปฏิชีวนะ',
+    pharmaCategory: 'ควิโนโลน',
+    strength: '500 mg',
+    unit: 'เม็ด',
+    indication: 'รักษาการติดเชื้อทางเดินปัสสาวะและทางเดินอาหาร',
+    caution: 'หลีกเลี่ยงการออกแดดจัดในระหว่างใช้ยา',
+    minStock: 12,
+    maxStock: 120
+  },
+  {
+    drugId: 'DRG013',
+    tradeName: 'เมโทรนิดาโซล 400 มก.',
+    genericName: 'Metronidazole',
+    legalCategory: 'ยาปฏิชีวนะ',
+    pharmaCategory: 'ยาต้านปรสิตและแบคทีเรียไม่ใช้ออกซิเจน',
+    strength: '400 mg',
+    unit: 'เม็ด',
+    indication: 'รักษาโรคบิดมีตัวและติดเชื้อทางนรีเวช',
+    caution: 'ห้ามดื่มแอลกอฮอล์ร่วมกับยา',
+    minStock: 10,
+    maxStock: 100
+  },
+  {
+    drugId: 'DRG014',
+    tradeName: 'ลอราทาดีน 10 มก.',
+    genericName: 'Loratadine',
+    legalCategory: 'ยาบรรจุเสร็จ',
+    pharmaCategory: 'ยาต้านฮิสตามีนรุ่นที่ 2',
+    strength: '10 mg',
+    unit: 'เม็ด',
+    indication: 'บรรเทาอาการแพ้และไข้ละอองฟาง',
+    caution: 'อาจทำให้ง่วงในผู้ป่วยบางราย',
+    minStock: 25,
+    maxStock: 200
+  },
+  {
+    drugId: 'DRG015',
+    tradeName: 'เซทิริซีน 10 มก.',
+    genericName: 'Cetirizine',
+    legalCategory: 'ยาบรรจุเสร็จ',
+    pharmaCategory: 'ยาต้านฮิสตามีนรุ่นที่ 2',
+    strength: '10 mg',
+    unit: 'เม็ด',
+    indication: 'บรรเทาอาการแพ้และลมพิษ',
+    caution: 'หลีกเลี่ยงการขับรถหากมีอาการง่วงนอน',
+    minStock: 25,
+    maxStock: 200
+  },
+  {
+    drugId: 'DRG016',
+    tradeName: 'เฟกโซเฟนาดีน 120 มก.',
+    genericName: 'Fexofenadine',
+    legalCategory: 'ยาบรรจุเสร็จ',
+    pharmaCategory: 'ยาต้านฮิสตามีนรุ่นที่ 2',
+    strength: '120 mg',
+    unit: 'เม็ด',
+    indication: 'รักษาอาการแพ้และลมพิษเรื้อรัง',
+    caution: 'ไม่ควรรับประทานร่วมกับน้ำผลไม้บางชนิด',
+    minStock: 20,
+    maxStock: 180
+  },
+  {
+    drugId: 'DRG017',
+    tradeName: 'คลอร์เฟนิรามีน 4 มก.',
+    genericName: 'Chlorpheniramine',
+    legalCategory: 'ยาสามัญประจำบ้าน',
+    pharmaCategory: 'ยาต้านฮิสตามีนรุ่นที่ 1',
+    strength: '4 mg',
+    unit: 'เม็ด',
+    indication: 'บรรเทาอาการคัดจมูก น้ำมูกไหล',
+    caution: 'ทำให้ง่วง ควรหลีกเลี่ยงการขับขี่',
+    minStock: 40,
+    maxStock: 240
+  },
+  {
+    drugId: 'DRG018',
+    tradeName: 'ลอเปอร์เอไมด์ 2 มก.',
+    genericName: 'Loperamide',
+    legalCategory: 'ยาบรรจุเสร็จ',
+    pharmaCategory: 'ยารักษาอาการท้องเสีย',
+    strength: '2 mg',
+    unit: 'แคปซูล',
+    indication: 'บรรเทาอาการท้องเสียเฉียบพลัน',
+    caution: 'ห้ามใช้ในเด็กอายุน้อยกว่า 2 ปี',
+    minStock: 15,
+    maxStock: 150
+  },
+  {
+    drugId: 'DRG019',
+    tradeName: 'ไดเมนไฮดริเนต 50 มก.',
+    genericName: 'Dimenhydrinate',
+    legalCategory: 'ยาบรรจุเสร็จ',
+    pharmaCategory: 'ยาป้องกันอาการเมารถเมาเรือ',
+    strength: '50 mg',
+    unit: 'เม็ด',
+    indication: 'ป้องกันและรักษาอาการเวียนศีรษะ คลื่นไส้จากการเดินทาง',
+    caution: 'ควรรับประทานก่อนเดินทางอย่างน้อย 30 นาที',
+    minStock: 12,
+    maxStock: 120
+  },
+  {
+    drugId: 'DRG020',
+    tradeName: 'ไดไซโคลมีน 10 มก.',
+    genericName: 'Dicyclomine',
+    legalCategory: 'ยาบรรจุเสร็จ',
+    pharmaCategory: 'ยาคลายกล้ามเนื้อเรียบทางเดินอาหาร',
+    strength: '10 mg',
+    unit: 'เม็ด',
+    indication: 'รักษาอาการปวดเกร็งท้อง',
+    caution: 'ระวังการใช้ในผู้สูงอายุและผู้ป่วยต้อหิน',
+    minStock: 10,
+    maxStock: 100
+  },
+  {
+    drugId: 'DRG021',
+    tradeName: 'บิสซาโคดิล 5 มก.',
+    genericName: 'Bisacodyl',
+    legalCategory: 'ยาบรรจุเสร็จ',
+    pharmaCategory: 'ยาระบายกระตุ้นการบีบตัวของลำไส้',
+    strength: '5 mg',
+    unit: 'เม็ดเคลือบ',
+    indication: 'รักษาอาการท้องผูกเฉียบพลัน',
+    caution: 'ควรรับประทานก่อนนอนและดื่มน้ำมากเพียงพอ',
+    minStock: 15,
+    maxStock: 150
+  },
+  {
+    drugId: 'DRG022',
+    tradeName: 'ไซเลียม ฮัสก์',
+    genericName: 'Psyllium Husk',
+    legalCategory: 'ยาบรรจุเสร็จ',
+    pharmaCategory: 'ใยอาหารเสริม',
+    strength: '3.4 g',
+    unit: 'ซองผง',
+    indication: 'เพิ่มกากใยในลำไส้ ช่วยให้ขับถ่ายปกติ',
+    caution: 'ต้องรับประทานกับน้ำอย่างน้อย 1 แก้ว',
+    minStock: 8,
+    maxStock: 80
+  },
+  {
+    drugId: 'DRG023',
+    tradeName: 'ออร์นิดาโซล 500 มก.',
+    genericName: 'Ornidazole',
+    legalCategory: 'ยาปฏิชีวนะ',
+    pharmaCategory: 'ยาต้านโปรโตซัว',
+    strength: '500 mg',
+    unit: 'เม็ด',
+    indication: 'รักษาโรคพยาธิในลำไส้และติดเชื้อทางนรีเวช',
+    caution: 'ไม่ควรดื่มเครื่องดื่มแอลกอฮอล์ร่วม',
+    minStock: 8,
+    maxStock: 80
+  },
+  {
+    drugId: 'DRG024',
+    tradeName: 'เซฟาโดรซิล 500 มก.',
+    genericName: 'Cefadroxil',
+    legalCategory: 'ยาปฏิชีวนะ',
+    pharmaCategory: 'เซฟาโลสปอรินรุ่นที่ 1',
+    strength: '500 mg',
+    unit: 'แคปซูล',
+    indication: 'รักษาการติดเชื้อทางเดินหายใจและผิวหนัง',
+    caution: 'ระวังในผู้ที่แพ้เพนิซิลลิน',
+    minStock: 12,
+    maxStock: 110
+  },
+  {
+    drugId: 'DRG025',
+    tradeName: 'เซฟิกซิม 200 มก.',
+    genericName: 'Cefixime',
+    legalCategory: 'ยาปฏิชีวนะ',
+    pharmaCategory: 'เซฟาโลสปอรินรุ่นที่ 3',
+    strength: '200 mg',
+    unit: 'เม็ด',
+    indication: 'รักษาการติดเชื้อทางเดินปัสสาวะและหูคอจมูก',
+    caution: 'อาจทำให้ถ่ายเหลว ควรดื่มน้ำมากๆ',
+    minStock: 10,
+    maxStock: 90
+  },
+  {
+    drugId: 'DRG026',
+    tradeName: 'โพแทสเซียม คลอไรด์ 600 มก.',
+    genericName: 'Potassium Chloride',
+    legalCategory: 'ยาควบคุมพิเศษ',
+    pharmaCategory: 'เกลือแร่ทดแทนโพแทสเซียม',
+    strength: '600 mg',
+    unit: 'เม็ดออกฤทธิ์ช้า',
+    indication: 'รักษาภาวะโพแทสเซียมต่ำ',
+    caution: 'ต้องรับประทานพร้อมอาหารหรือหลังอาหารทันที',
+    minStock: 6,
+    maxStock: 60
+  },
+  {
+    drugId: 'DRG027',
+    tradeName: 'แมกนีเซียม ไฮดรอกไซด์ ซัสเพนชัน',
+    genericName: 'Magnesium Hydroxide',
+    legalCategory: 'ยาบรรจุเสร็จ',
+    pharmaCategory: 'ยาลดกรดและยาระบายอ่อน',
+    strength: '400 mg/5 mL',
+    unit: 'สารแขวนตะกอน',
+    indication: 'บรรเทาอาการกรดเกินและท้องผูกเล็กน้อย',
+    caution: 'เขย่าขวดก่อนใช้ทุกครั้ง',
+    minStock: 6,
+    maxStock: 60
+  },
+  {
+    drugId: 'DRG028',
+    tradeName: 'โซเดียม ไบคาร์บอเนต',
+    genericName: 'Sodium Bicarbonate',
+    legalCategory: 'ยาสามัญประจำบ้าน',
+    pharmaCategory: 'ยาลดกรด',
+    strength: '500 mg',
+    unit: 'ผง',
+    indication: 'บรรเทาอาการกรดไหลย้อนและแน่นท้อง',
+    caution: 'หลีกเลี่ยงการใช้ต่อเนื่องในผู้ป่วยโรคหัวใจ',
+    minStock: 8,
+    maxStock: 80
+  },
+  {
+    drugId: 'DRG029',
+    tradeName: 'กรดโฟลิก 5 มก.',
+    genericName: 'Folic Acid',
+    legalCategory: 'ยาบรรจุเสร็จ',
+    pharmaCategory: 'วิตามินและแร่ธาตุ',
+    strength: '5 mg',
+    unit: 'เม็ด',
+    indication: 'ป้องกันภาวะโลหิตจางจากการขาดโฟเลต',
+    caution: 'เหมาะสำหรับสตรีวัยเจริญพันธุ์และหญิงตั้งครรภ์',
+    minStock: 20,
+    maxStock: 160
+  },
+  {
+    drugId: 'DRG030',
+    tradeName: 'ไฮโดรคอร์ติโซน ครีม 1%',
+    genericName: 'Hydrocortisone',
+    legalCategory: 'ยาควบคุมพิเศษ',
+    pharmaCategory: 'ยาทาภายนอกแก้อักเสบ',
+    strength: '1 %',
+    unit: 'ครีม',
+    indication: 'บรรเทาอาการแพ้ คัน และผื่นแดง',
+    caution: 'ไม่ควรใช้ต่อเนื่องเกิน 2 สัปดาห์ในบริเวณกว้าง',
+    minStock: 10,
+    maxStock: 80
+  }
+];
+
+function seedThaiFormularySet() {
+  return new Promise((resolve, reject) => {
+    const insertSql = `
+      INSERT OR IGNORE INTO Formulary
+      (drugId, tradeName, genericName, legalCategory, pharmaCategory, strength, unit,
+       indication, caution, minStock, maxStock)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const stmt = db.prepare(insertSql, (err) => {
+      if (err) {
+        reject(err);
+      }
+    });
+
+    let index = 0;
+    let inserted = 0;
+
+    const finalizeAndUpdate = () => {
+      stmt.finalize(async (err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        const pattern = `%${REPLACEMENT_CHAR}%`;
+
+        try {
+          const updates = await Promise.all(
+            THAI_FORMULARY_SEED.map((drug) =>
+              runStatement(
+                `UPDATE Formulary
+                   SET tradeName = ?, genericName = ?, legalCategory = ?, pharmaCategory = ?,
+                       strength = ?, unit = ?, indication = ?, caution = ?,
+                       minStock = CASE WHEN IFNULL(minStock, 0) = 0 THEN ? ELSE minStock END,
+                       maxStock = CASE WHEN IFNULL(maxStock, 0) = 0 THEN ? ELSE maxStock END
+                 WHERE drugId = ?
+                   AND (
+                     tradeName LIKE ? OR tradeName IS NULL OR TRIM(tradeName) = '' OR
+                     genericName LIKE ? OR genericName IS NULL OR TRIM(genericName) = '' OR
+                     legalCategory LIKE ? OR legalCategory IS NULL OR TRIM(legalCategory) = '' OR
+                     pharmaCategory LIKE ? OR pharmaCategory IS NULL OR TRIM(pharmaCategory) = '' OR
+                     indication LIKE ? OR indication IS NULL OR TRIM(indication) = '' OR
+                     caution LIKE ? OR caution IS NULL OR TRIM(caution) = ''
+                   )`,
+                [
+                  drug.tradeName,
+                  drug.genericName,
+                  drug.legalCategory,
+                  drug.pharmaCategory,
+                  drug.strength,
+                  drug.unit,
+                  drug.indication,
+                  drug.caution,
+                  drug.minStock,
+                  drug.maxStock,
+                  drug.drugId,
+                  pattern,
+                  pattern,
+                  pattern,
+                  pattern,
+                  pattern,
+                  pattern
+                ]
+              ).then((result) => result.changes || 0).catch((error) => {
+                console.error(`Error normalizing drug ${drug.drugId}:`, error.message);
+                return 0;
+              })
+            )
+          );
+
+          const normalized = updates.reduce((sum, value) => sum + value, 0);
+          resolve({ inserted, normalized });
+        } catch (updateError) {
+          reject(updateError);
+        }
+      });
+    };
+
+    const runNext = () => {
+      if (index >= THAI_FORMULARY_SEED.length) {
+        finalizeAndUpdate();
+        return;
+      }
+
+      const drug = THAI_FORMULARY_SEED[index++];
+      stmt.run(
+        [
+          drug.drugId,
+          drug.tradeName,
+          drug.genericName,
+          drug.legalCategory,
+          drug.pharmaCategory,
+          drug.strength,
+          drug.unit,
+          drug.indication,
+          drug.caution,
+          drug.minStock,
+          drug.maxStock
+        ],
+        function(err) {
+          if (err) {
+            console.error(`Error seeding drug ${drug.drugId}:`, err.message);
+          } else if (this.changes > 0) {
+            inserted += 1;
+          }
+          runNext();
+        }
+      );
+    };
+
+    runNext();
+  });
+}
+
 // ฟังก์ชันสำหรับตรวจสอบและสร้างบัญชี admin หากยังไม่มี
 function initializeDatabase() {
   return new Promise((resolve, reject) => {
@@ -2438,52 +2948,24 @@ function initializeDatabase() {
         }
 
         // เพิ่มข้อมูลตัวอย่าง Formulary หากยังไม่มี
-        db.get("SELECT COUNT(*) as count FROM Formulary", (err, row) => {
+        db.get("SELECT COUNT(*) as count FROM Formulary", async (err, row) => {
           if (err) {
             console.error('Error checking formulary:', err.message);
-          } else if (row.count === 0) {
-            const sampleDrugs = [
-              ['DRG001', 'พาราเซตามอล 500 มก.', 'Paracetamol', 'ยาสามัญประจำบ้าน', 'ยาแก้ปวด ลดไข้', '500 mg', 'เม็ด', 'ลดไข้ บรรเทาอาการปวดเล็กน้อย', 'หลีกเลี่ยงการใช้เกินขนาดและแอลกอฮอล์'],
-              ['DRG002', 'ไอบูโพรเฟน 400 มก.', 'Ibuprofen', 'ยาบรรจุเสร็จ', 'ยาแก้อักเสบ ลดไข้', '400 mg', 'เม็ด', 'บรรเทาปวดอักเสบจากกล้ามเนื้อและข้อ', 'รับประทานพร้อมอาหาร เพื่อลดการระคายเคืองกระเพาะ'],
-              ['DRG003', 'ไดโคลฟีแนค โซเดียม', 'Diclofenac', 'ยาควบคุมพิเศษ', 'ยาแก้อักเสบลดปวด (NSAIDs)', '25 mg', 'เม็ด', 'บรรเทาปวดข้อ ปวดกล้ามเนื้อ', 'ควรระวังในผู้ป่วยโรคไตและกระเพาะอาหาร'],
-              ['DRG004', 'นาพรอกเซน 250 มก.', 'Naproxen', 'ยาควบคุมพิเศษ', 'ยาแก้อักเสบลดปวด (NSAIDs)', '250 mg', 'เม็ด', 'รักษาอาการปวดอักเสบจากข้อเสื่อม ข้ออักเสบ', 'ไม่ควรใช้ร่วมกับ NSAIDs ตัวอื่น'],
-              ['DRG005', 'แอสไพริน 81 มก.', 'Acetylsalicylic Acid', 'ยาควบคุมพิเศษ', 'ยาต้านเกล็ดเลือด', '81 mg', 'เม็ดเคลือบ', 'ลดความเสี่ยงหัวใจขาดเลือดเฉียบพลัน', 'ห้ามใช้ในเด็กที่มีไข้หรือหญิงตั้งครรภ์ไตรมาสสุดท้าย'],
-              ['DRG006', 'อะม็อกซีซิลลิน 500 มก.', 'Amoxicillin', 'ยาปฏิชีวนะ', 'เพนิซิลลิน', '500 mg', 'แคปซูล', 'รักษาการติดเชื้อทางเดินหายใจและผิวหนัง', 'รับประทานให้ครบคอร์สแม้อาการดีขึ้น'],
-              ['DRG007', 'อ็อกซาซิลลิน 500 มก.', 'Cloxacillin', 'ยาปฏิชีวนะ', 'เพนิซิลลิน', '500 mg', 'แคปซูล', 'รักษาการติดเชื้อที่เกิดจากเชื้อ Staphylococcus', 'ควรรับประทานก่อนอาหาร 1 ชั่วโมง'],
-              ['DRG008', 'คลาวูลานิก แอซิด 625 มก.', 'Amoxicillin + Clavulanate', 'ยาปฏิชีวนะ', 'เพนิซิลลินผสม', '500/125 mg', 'เม็ด', 'รักษาการติดเชื้อทางเดินหายใจรุนแรง', 'ควรรับประทานพร้อมอาหารเพื่อลดอาการไม่สบายท้อง'],
-              ['DRG009', 'อะซิโทรไมซิน 250 มก.', 'Azithromycin', 'ยาปฏิชีวนะ', 'มาโครไลด์', '250 mg', 'แคปซูล', 'รักษาการติดเชื้อระบบทางเดินหายใจและผิวหนัง', 'รับประทานวันละครั้งตามแพทย์สั่ง'],
-              ['DRG010', 'คลาริโทรไมซิน 500 มก.', 'Clarithromycin', 'ยาปฏิชีวนะ', 'มาโครไลด์', '500 mg', 'เม็ด', 'รักษาการติดเชื้อทางเดินหายใจ ลำไส้ และผิวหนัง', 'ระวังการใช้ร่วมกับยาลดไขมันกลุ่มสแตติน'],
-              ['DRG011', 'ลิเวอร์ฟลอกซาซิน 500 มก.', 'Levofloxacin', 'ยาปฏิชีวนะ', 'ควิโนโลนรุ่นใหม่', '500 mg', 'เม็ด', 'รักษาการติดเชื้อปอดอักเสบรุนแรง และระบบทางเดินปัสสาวะ', 'หลีกเลี่ยงการใช้ร่วมกับยาต้านกรดที่มีอะลูมิเนียม'],
-              ['DRG012', 'ซิโพรฟลอกซาซิน 500 มก.', 'Ciprofloxacin', 'ยาปฏิชีวนะ', 'ควิโนโลน', '500 mg', 'เม็ด', 'รักษาการติดเชื้อทางเดินปัสสาวะและระบบทางเดินอาหาร', 'หลีกเลี่ยงการออกแดดจัด ขณะใช้ยา'],
-              ['DRG013', 'เมโทรนิดาโซล 400 มก.', 'Metronidazole', 'ยาปฏิชีวนะ', 'ยาต้านปรสิตและแบคทีเรียไม่ใช้ออกซิเจน', '400 mg', 'เม็ด', 'รักษาโรคบิดมีตัวและการติดเชื้อทางนรีเวช', 'ห้ามดื่มแอลกอฮอล์ร่วมกับยา'],
-              ['DRG014', 'ลอราทาดีน 10 มก.', 'Loratadine', 'ยาบรรจุเสร็จ', 'ยาต้านฮิสตามีนรุ่นที่ 2', '10 mg', 'เม็ด', 'บรรเทาอาการแพ้ ไข้ละอองฟาง', 'อาจทำให้ง่วงในผู้ป่วยบางราย'],
-              ['DRG015', 'เซทิริซีน 10 มก.', 'Cetirizine', 'ยาบรรจุเสร็จ', 'ยาต้านฮิสตามีนรุ่นที่ 2', '10 mg', 'เม็ด', 'บรรเทาอาการแพ้ ลมพิษ', 'หลีกเลี่ยงการขับรถหากมีอาการง่วง'],
-              ['DRG016', 'เฟกโซเฟนาดีน 120 มก.', 'Fexofenadine', 'ยาบรรจุเสร็จ', 'ยาต้านฮิสตามีนรุ่นที่ 2', '120 mg', 'เม็ด', 'รักษาอาการแพ้และลมพิษเรื้อรัง', 'ไม่ควรรับประทานร่วมกับน้ำผลไม้บางชนิด'],
-              ['DRG017', 'คลอร์เฟนิรามีน 4 มก.', 'Chlorpheniramine', 'ยาสามัญประจำบ้าน', 'ยาต้านฮิสตามีนรุ่นที่ 1', '4 mg', 'เม็ด', 'บรรเทาอาการคัดจมูก น้ำมูกไหล', 'ทำให้ง่วงนอน ควรหลีกเลี่ยงการขับขี่'],
-              ['DRG018', 'ลอเปอร์เอไมด์ 2 มก.', 'Loperamide', 'ยาบรรจุเสร็จ', 'ยารักษาอาการท้องเสีย', '2 mg', 'แคปซูล', 'บรรเทาอาการท้องเสียเฉียบพลัน', 'ห้ามใช้ในเด็กอายุน้อยกว่า 2 ปี'],
-              ['DRG019', 'ไดเมนไฮดริเนต 50 มก.', 'Dimenhydrinate', 'ยาบรรจุเสร็จ', 'ยาป้องกันอาการเมารถเมาเรือ', '50 mg', 'เม็ด', 'ป้องกันและรักษาอาการเวียนศีรษะ คลื่นไส้จากการเดินทาง', 'ควรรับประทานก่อนเดินทาง 30 นาที'],
-              ['DRG020', 'ไดโคลมีน 10 มก.', 'Dicyclomine', 'ยาบรรจุเสร็จ', 'ยาคลายกล้ามเนื้อเรียบทางเดินอาหาร', '10 mg', 'เม็ด', 'รักษาอาการปวดเกร็งท้อง', 'ระวังในผู้สูงอายุและผู้ป่วยต้อหิน'],
-              ['DRG021', 'บิสซาโคดิล 5 มก.', 'Bisacodyl', 'ยาบรรจุเสร็จ', 'ยาระบายกระตุ้นการบีบตัวของลำไส้', '5 mg', 'เม็ดเคลือบ', 'รักษาอาการท้องผูกเฉียบพลัน', 'ควรรับประทานก่อนนอนและดื่มน้ำมากพอ'],
-              ['DRG022', 'ซิลลิยูม ฮัสก์', 'Psyllium Husk', 'ยาบรรจุเสร็จ', 'ใยอาหารเสริม', '3.4 g', 'ซองผง', 'เพิ่มกากใยในลำไส้ ช่วยการขับถ่าย', 'ต้องรับประทานกับน้ำอย่างน้อย 1 แก้ว'],
-              ['DRG023', 'ออร์นิดาโซล 500 มก.', 'Ornidazole', 'ยาปฏิชีวนะ', 'ยาต้านโปรโตซัว', '500 mg', 'เม็ด', 'รักษาโรคพยาธิในลำไส้และการติดเชื้อทางนรีเวช', 'ไม่ควรดื่มเครื่องดื่มแอลกอฮอล์ร่วม'],
-              ['DRG024', 'เซโฟดรอกซิล 500 มก.', 'Cefadroxil', 'ยาปฏิชีวนะ', 'เซฟาโลสปอรินรุ่นที่ 1', '500 mg', 'แคปซูล', 'รักษาการติดเชื้อทางเดินหายใจและผิวหนัง', 'ระวังผู้ที่แพ้เพนิซิลลิน'],
-              ['DRG025', 'เซฟิกซิม 200 มก.', 'Cefixime', 'ยาปฏิชีวนะ', 'เซฟาโลสปอรินรุ่นที่ 3', '200 mg', 'เม็ด', 'รักษาการติดเชื้อทางเดินปัสสาวะและหูคอจมูก', 'อาจทำให้ถ่ายเหลว ควรดื่มน้ำมากๆ'],
-              ['DRG026', 'โพแทสเซียม คลอไรด์ 600 มก.', 'Potassium Chloride', 'ยาควบคุมพิเศษ', 'เกลือแร่ทดแทนโพแทสเซียม', '600 mg', 'เม็ดออกฤทธิ์ช้า', 'รักษาภาวะโพแทสเซียมต่ำ', 'ต้องรับประทานพร้อมอาหารหรือหลังอาหารทันที'],
-              ['DRG027', 'แมกนีเซียม ไฮดรอกไซด์', 'Magnesium Hydroxide', 'ยาบรรจุเสร็จ', 'ยาลดกรดและยาระบายอ่อน', '400 mg/5 mL', 'สารแขวนตะกอน', 'บรรเทาอาการกรดเกินและท้องผูกเล็กน้อย', 'เขย่าขวดก่อนใช้ทุกครั้ง'],
-              ['DRG028', 'โซเดียม ไบคาร์บอเนต', 'Sodium Bicarbonate', 'ยาสามัญประจำบ้าน', 'ยาลดกรด', '500 mg', 'ผง', 'บรรเทาอาการกรดไหลย้อนและแน่นท้อง', 'หลีกเลี่ยงใช้ต่อเนื่องในผู้ป่วยโรคหัวใจ'],
-              ['DRG029', 'กรดโฟลิก 5 มก.', 'Folic Acid', 'ยาบรรจุเสร็จ', 'วิตามินและแร่ธาตุ', '5 mg', 'เม็ด', 'ป้องกันภาวะโลหิตจางจากการขาดโฟเลต', 'เหมาะสำหรับสตรีวัยเจริญพันธุ์และหญิงตั้งครรภ์'],
-              ['DRG030', 'ไฮโดรคอร์ติโซน ครีม 1%', 'Hydrocortisone', 'ยาควบคุมพิเศษ', 'ยาทาภายนอกแก้อักเสบ', '1 %', 'ครีม', 'บรรเทาอาการแพ้ คัน ผื่นแดง', 'ไม่ควรใช้ต่อเนื่องเกิน 2 สัปดาห์ในบริเวณกว้าง']
-            ];
-
-            const stmt = db.prepare(`
-              INSERT INTO Formulary (drugId, tradeName, genericName, legalCategory, pharmaCategory, strength, unit, indication, caution)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `);
-            sampleDrugs.forEach(drug => stmt.run(drug));
-            stmt.finalize();
-            console.log('Added sample drug data set (30 items)');
+            resolve();
+            return;
           }
-          
+
+          try {
+            const result = await seedThaiFormularySet();
+            if (result.inserted > 0 || result.normalized > 0) {
+              console.log(`Ensured Thai formulary seed set (added ${result.inserted}, normalized ${result.normalized})`);
+            } else if ((row?.count || 0) === 0) {
+              console.warn('Formulary table is empty even after attempting to seed sample data');
+            }
+          } catch (seedError) {
+            console.error('Error ensuring Thai formulary seed:', seedError.message);
+          }
+
           resolve();
         });
       });
