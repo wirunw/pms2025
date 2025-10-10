@@ -1,9 +1,20 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const fs = require('fs');
 
 // สร้างหรือเปิดฐานข้อมูล
 const rawDbPath = process.env.DATABASE_URL;
-let dbPath = rawDbPath || path.resolve(__dirname, 'pharmacy.db');
+const defaultLocalPath = path.resolve(__dirname, 'pharmacy.db');
+let dbPath = rawDbPath || defaultLocalPath;
+
+if (!rawDbPath) {
+  const railwayVolume = process.env.RAILWAY_VOLUME_MOUNT_PATH;
+  if (railwayVolume) {
+    dbPath = path.join(railwayVolume, 'pharmacy.db');
+  } else if (fs.existsSync('/data')) {
+    dbPath = path.join('/data', 'pharmacy.db');
+  }
+}
 
 if (rawDbPath && rawDbPath.startsWith('file:')) {
   dbPath = rawDbPath;

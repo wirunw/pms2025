@@ -2443,6 +2443,8 @@ const posDrugInfo = document.getElementById('posDrugInfo');
 const posPostSaleActions = document.getElementById('posPostSaleActions');
 const posPrintReceiptBtn = document.getElementById('posPrintReceiptBtn');
 const posNewSaleBtn = document.getElementById('posNewSaleBtn');
+const memberInfoText = document.getElementById('memberInfoText');
+const viewMemberHistoryBtn = document.getElementById('viewMemberHistoryBtn');
 
 
 function resetPOS() {
@@ -2452,7 +2454,16 @@ function resetPOS() {
     currentSelectedPOSDrug = null;
     lastSaleData = null;
     posForm.reset();
-    posSelectedMember.textContent = 'ลูกค้าทั่วไป';
+    if (memberInfoText) {
+        memberInfoText.textContent = 'ลูกค้าทั่วไป';
+    }
+    if (viewMemberHistoryBtn) {
+        viewMemberHistoryBtn.classList.add('hidden');
+    }
+    if (posMemberResults) {
+        posMemberResults.innerHTML = '';
+        posMemberResults.classList.add('hidden');
+    }
     posMemberClear.classList.add('hidden');
     posDrugClear.classList.add('hidden');
     posDrugInfo.classList.add('hidden');
@@ -2512,15 +2523,15 @@ async function loadMemberDetails(memberId) {
 }
 
 // เพิ่มการอ้างอิงถึงปุ่มดูประวัติ
-const viewMemberHistoryBtn = document.getElementById('viewMemberHistoryBtn');
-
-viewMemberHistoryBtn.addEventListener('click', () => {
-    if (selectedMemberDetails) {
-        showPurchaseHistory(selectedMemberDetails.memberId, selectedMemberDetails.fullName);
-    } else {
-        showCustomAlert('ไม่มีข้อมูลลูกค้า');
-    }
-});
+if (viewMemberHistoryBtn) {
+    viewMemberHistoryBtn.addEventListener('click', () => {
+        if (selectedMemberDetails) {
+            showPurchaseHistory(selectedMemberDetails.memberId, selectedMemberDetails.fullName);
+        } else {
+            showCustomAlert('ไม่มีข้อมูลลูกค้า');
+        }
+    });
+}
 
 posMemberSearch.addEventListener('input', debounce(async (e) => {
     const term = e.target.value.trim();
@@ -2535,10 +2546,15 @@ posMemberSearch.addEventListener('input', debounce(async (e) => {
                 div.textContent = `${member.fullName} - ${member.phone}`;
                 div.className = 'p-2 hover:bg-emerald-100 cursor-pointer';
                 div.onclick = () => {
-                    document.getElementById('memberInfoText').textContent = `สมาชิก: ${member.fullName}`;
-                    viewMemberHistoryBtn.classList.remove('hidden'); // แสดงปุ่มดูประวัติ
+                    if (memberInfoText) {
+                        memberInfoText.textContent = `สมาชิก: ${member.fullName}`;
+                    }
+                    if (viewMemberHistoryBtn) {
+                        viewMemberHistoryBtn.classList.remove('hidden');
+                    }
                     posMemberSearch.value = member.fullName;
                     posMemberResults.classList.add('hidden');
+                    selectedMemberDetails = { ...member };
                     loadMemberDetails(member.memberId);
                 };
                 posMemberResults.appendChild(div);
@@ -2553,8 +2569,12 @@ posMemberSearch.addEventListener('input', debounce(async (e) => {
 posMemberClear.addEventListener('click', () => {
     posMemberSearch.value = '';
     selectedMemberDetails = null;
-    document.getElementById('memberInfoText').textContent = 'ลูกค้าทั่วไป';
-    viewMemberHistoryBtn.classList.add('hidden'); // ซ่อนปุ่มดูประวัติ
+    if (memberInfoText) {
+        memberInfoText.textContent = 'ลูกค้าทั่วไป';
+    }
+    if (viewMemberHistoryBtn) {
+        viewMemberHistoryBtn.classList.add('hidden');
+    }
     posMemberResults.classList.add('hidden');
     posMemberClear.classList.add('hidden');
     posMemberSearch.focus();
