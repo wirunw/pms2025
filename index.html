@@ -540,9 +540,14 @@
                         <span>เงินทอน:</span>
                         <span id="posChangeGiven" class="text-lg">0.00</span>
                     </div>
-                     <div class="flex justify-between items-center">
-                        <label for="posPharmacist">ผู้ขาย (เภสัชกร):</label>
-                        <input type="text" id="posPharmacist" class="w-1/2 p-2 border rounded" required>
+                    <div>
+                        <div class="flex justify-between items-center">
+                            <label for="posPharmacist">ผู้ขาย (เภสัชกร):</label>
+                            <select id="posPharmacist" class="w-1/2 p-2 border rounded bg-white" required>
+                                <option value="" disabled selected>เลือกผู้ขายจากรายชื่อเจ้าหน้าที่</option>
+                            </select>
+                        </div>
+                        <p id="posPharmacistHelper" class="text-xs mt-1 text-slate-500 hidden">เลือกชื่อผู้ขายจากรายชื่อเจ้าหน้าที่</p>
                     </div>
                     <button type="submit" id="posSubmitSaleBtn" class="w-full btn-blue text-lg font-bold">บันทึกการขาย</button>
                     <div id="posPostSaleActions" class="hidden w-full flex gap-4">
@@ -2445,7 +2450,130 @@ const posPrintReceiptBtn = document.getElementById('posPrintReceiptBtn');
 const posNewSaleBtn = document.getElementById('posNewSaleBtn');
 const memberInfoText = document.getElementById('memberInfoText');
 const viewMemberHistoryBtn = document.getElementById('viewMemberHistoryBtn');
+const posPharmacistSelect = document.getElementById('posPharmacist');
+const posPharmacistHelper = document.getElementById('posPharmacistHelper');
 
+function getSelectedPosPharmacist() {
+    if (!posPharmacistSelect) {
+        return { id: '', name: '', licenseNumber: '', position: '' };
+    }
+    const pharmacistId = posPharmacistSelect.value || '';
+    if (!pharmacistId) {
+        return { id: '', name: '', licenseNumber: '', position: '' };
+    }
+    const staff = Array.isArray(staffDataCache)
+        ? staffDataCache.find(item => item.staffId === pharmacistId)
+        : null;
+    if (staff) {
+        return {
+            id: staff.staffId,
+            name: staff.fullName,
+            licenseNumber: staff.licenseNumber || '',
+            position: staff.position || ''
+        };
+    }
+    const option = posPharmacistSelect.selectedOptions[0];
+    const dataset = option ? option.dataset : {};
+    return {
+        id: pharmacistId,
+        name: (dataset?.name || option?.textContent || '').trim(),
+        licenseNumber: dataset?.license || '',
+        position: dataset?.position || ''
+    };
+}
+
+function updatePosPharmacistHelper() {
+    if (!posPharmacistHelper) return;
+    posPharmacistHelper.classList.remove('hidden', 'text-red-600', 'text-slate-500');
+
+    if (!posPharmacistSelect || posPharmacistSelect.disabled) {
+        posPharmacistHelper.textContent = 'ไม่มีข้อมูลเจ้าหน้าที่ กรุณาเพิ่มในเมนู "เจ้าหน้าที่" ก่อนทำรายการขาย';
+        posPharmacistHelper.classList.add('text-red-600');
+        return;
+    }
+
+    if (!posPharmacistSelect.value) {
+        posPharmacistHelper.textContent = 'เลือกชื่อผู้ขายจากรายชื่อเจ้าหน้าที่';
+        posPharmacistHelper.classList.add('text-slate-500');
+        return;
+    }
+
+    const { licenseNumber, position } = getSelectedPosPharmacist();
+    const detailParts = [];
+    if (position) detailParts.push(`ตำแหน่ง ${position}`);
+    if (licenseNumber) detailParts.push(`ใบอนุญาต ${licenseNumber}`);
+
+    if (detailParts.length === 0) {
+        posPharmacistHelper.textContent = '';
+        posPharmacistHelper.classList.add('hidden');
+    } else {
+        posPharmacistHelper.textContent = detailParts.join(' | ');
+        posPharmacistHelper.classList.add('text-slate-500');
+    }
+}
+
+function renderPosPharmacistOptions(staffs = []) {
+    if (!posPharmacistSelect) return;
+    const previousValue = posPharmacistSelect.value;
+    posPharmacistSelect.innerHTML = '';
+
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.disabled = true;
+    placeholder.textContent = 'เลือกผู้ขายจากรายชื่อเจ้าหน้าที่';
+    posPharmacistSelect.appendChild(placeholder);
+
+    staffs.forEach((staff) => {
+        if (!staff || !staff.staffId) return;
+        const option = document.createElement('option');
+        option.value = staff.staffId;
+        option.dataset.name = staff.fullName || '';
+        option.dataset.license = staff.licenseNumber || '';
+        option.dataset.position = staff.position || '';
+        const descriptorParts = [];
+        if (staff.position) descriptorParts.push(staff.position);
+        if (staff.licenseNumber) descriptorParts.push(`ใบอนุญาต ${staff.licenseNumber}`);
+        option.textContent = descriptorParts.length > 0
+            ? `${staff.fullName} - ${descriptorParts.join(' / ')}`
+            : staff.fullName;
+        posPharmacistSelect.appendChild(option);
+    });
+
+    const availableIds = new Set(staffs.map(staff => staff.staffId));
+    if (previousValue && availableIds.has(previousValue)) {
+        posPharmacistSelect.value = previousValue;
+        placeholder.selected = false;
+    } else {
+        posPharmacistSelect.value = '';
+        placeholder.selected = true;
+    }
+
+    posPharmacistSelect.disabled = staffs.length === 0;
+    updatePosPharmacistHelper();
+}
+
+async function populatePOSPharmacists({ forceRefresh = false } = {}) {
+    if (!posPharmacistSelect) return;
+    const needFetch = forceRefresh || !Array.isArray(staffDataCache) || staffDataCache.length === 0;
+    if (needFetch) {
+        try {
+            const staffs = await apiCall('staffs');
+            staffDataCache = Array.isArray(staffs) ? staffs : [];
+        } catch (error) {
+            console.error('Error loading staff data for POS:', error);
+            if (!Array.isArray(staffDataCache) || staffDataCache.length === 0) {
+                renderPosPharmacistOptions([]);
+                showCustomAlert('ไม่สามารถโหลดรายชื่อเจ้าหน้าที่สำหรับเลือกผู้ขายได้');
+                return;
+            }
+        }
+    }
+    renderPosPharmacistOptions(Array.isArray(staffDataCache) ? staffDataCache : []);
+}
+
+if (posPharmacistSelect) {
+    posPharmacistSelect.addEventListener('change', updatePosPharmacistHelper);
+}
 
 function resetPOS() {
     posCart = [];
@@ -2454,6 +2582,15 @@ function resetPOS() {
     currentSelectedPOSDrug = null;
     lastSaleData = null;
     posForm.reset();
+    posForm.dataset.submitted = 'false';
+    if (posPharmacistSelect) {
+        posPharmacistSelect.value = '';
+        const placeholder = posPharmacistSelect.querySelector('option[value=""]');
+        if (placeholder) {
+            placeholder.selected = true;
+        }
+        posPharmacistSelect.disabled = Array.isArray(staffDataCache) && staffDataCache.length === 0;
+    }
     if (memberInfoText) {
         memberInfoText.textContent = 'ลูกค้าทั่วไป';
     }
@@ -2468,19 +2605,108 @@ function resetPOS() {
     posDrugClear.classList.add('hidden');
     posDrugInfo.classList.add('hidden');
     posSubmitSaleBtn.classList.remove('hidden');
+    posSubmitSaleBtn.disabled = false;
     posPostSaleActions.classList.add('hidden');
     posResponseMsg.textContent = '';
+    updatePosPharmacistHelper();
     renderPOSCart();
 }
 
-async function loadPOSData() { 
-    resetPOS(); 
+async function loadPOSData() {
+    resetPOS();
+    await populatePOSPharmacists();
     try {
         formularyDataCache = await apiCall('drugs');
     } catch(e) {
         console.error("Error loading drugs data:", e);
         showCustomAlert("ไม่สามารถโหลดข้อมูลยาสำหรับตรวจสอบ Drug Interaction/Allergy ได้");
         formularyDataCache = [];
+    }
+}
+
+function buildPosSalePayload() {
+    if (posCart.length === 0) {
+        showCustomAlert('กรุณาเพิ่มสินค้าลงตะกร้าก่อน');
+        return null;
+    }
+    if (!posPharmacistSelect) {
+        showCustomAlert('ไม่พบฟิลด์ผู้ขาย กรุณารีเฟรชหน้าอีกครั้ง');
+        return null;
+    }
+    if (posPharmacistSelect.disabled) {
+        showCustomAlert('ไม่มีข้อมูลเจ้าหน้าที่ กรุณาเพิ่มในเมนู "เจ้าหน้าที่" ก่อน');
+        return null;
+    }
+    const { id: pharmacistId, name: pharmacistName } = getSelectedPosPharmacist();
+    if (!pharmacistId || !pharmacistName) {
+        showCustomAlert('กรุณาเลือกผู้ขายจากรายชื่อเจ้าหน้าที่');
+        return null;
+    }
+
+    return {
+        memberId: selectedMemberDetails ? selectedMemberDetails.memberId : null,
+        pharmacistId,
+        pharmacistName,
+        pharmacist: pharmacistName,
+        total: parseFloat(posTotalAmount.dataset.total) || 0,
+        items: posCart.map(item => ({
+            inventoryId: item.inventoryId,
+            drugId: item.drugId,
+            quantity: item.quantity,
+            price: parseFloat(item.price),
+            tradeName: item.tradeName,
+            genericName: item.genericName,
+            lot: item.lot
+        }))
+    };
+}
+
+async function submitPosSale({ guardSubmit = false } = {}) {
+    if (guardSubmit && posForm.dataset.submitted === 'true') return;
+    const payload = buildPosSalePayload();
+    if (!payload) {
+        if (guardSubmit) {
+            posForm.dataset.submitted = 'false';
+        }
+        return;
+    }
+
+    if (guardSubmit) {
+        posForm.dataset.submitted = 'true';
+    }
+
+    posSubmitSaleBtn.disabled = true;
+    posResponseMsg.textContent = '';
+
+    console.log('ส่ง payload:', payload);
+
+    try {
+        const result = await apiPost('sales', payload);
+        console.log('การบันทึกสำเร็จ:', result);
+
+        lastSaleData = {
+            items: [...posCart],
+            total: posTotalAmount.dataset.total,
+            cashReceived: posCashReceived.value,
+            changeGiven: posChangeGiven.textContent,
+            pharmacist: payload.pharmacistName,
+            pharmacistId: payload.pharmacistId,
+            member: selectedMemberDetails ? selectedMemberDetails.fullName : 'ลูกค้าทั่วไป',
+            saleDate: new Date()
+        };
+
+        posResponseMsg.textContent = 'บันทึกการขายสำเร็จ!';
+        posResponseMsg.className = 'text-center text-sm font-semibold mt-2 text-emerald-600';
+        posSubmitSaleBtn.classList.add('hidden');
+        posPostSaleActions.classList.remove('hidden');
+    } catch (error) {
+        console.error('Error saving sale:', error);
+        posResponseMsg.textContent = `เกิดข้อผิดพลาด: ${error.message}`;
+        posResponseMsg.className = 'text-center text-sm font-semibold mt-2 text-red-600';
+        if (guardSubmit) {
+            posForm.dataset.submitted = 'false';
+        }
+        posSubmitSaleBtn.disabled = false;
     }
 }
 
@@ -2762,116 +2988,13 @@ posResetCartBtn.addEventListener('click', async () => {
 });
 posCashReceived.addEventListener('input', calculateChange);
 
-posForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (posCart.length === 0) { showCustomAlert('กรุณาเพิ่มสินค้าลงตะกร้าก่อน'); return; }
-    if (!document.getElementById('posPharmacist').value) { showCustomAlert('กรุณากรอกชื่อเภสัชกร'); return; }
-    
-    posSubmitSaleBtn.disabled = true;
-    posResponseMsg.textContent = '';
-    
-    const payload = {
-        memberId: selectedMemberDetails ? selectedMemberDetails.memberId : null,
-        pharmacist: document.getElementById('posPharmacist').value,
-        total: parseFloat(posTotalAmount.dataset.total) || 0,
-        items: posCart.map(item => ({
-            inventoryId: item.inventoryId,
-            drugId: item.drugId,
-            quantity: item.quantity,
-            price: parseFloat(item.price),
-            tradeName: item.tradeName,
-            genericName: item.genericName,
-            lot: item.lot
-        }))
-    };
-    
-    console.log('ส่ง payload:', payload); // เพิ่ม log สำหรับ debug
-    
-    try {
-        const result = await apiPost('sales', payload);
-        console.log('การบันทึกสำเร็จ:', result);
-        
-        lastSaleData = {
-            items: [...posCart],
-            total: posTotalAmount.dataset.total,
-            cashReceived: posCashReceived.value,
-            changeGiven: posChangeGiven.textContent,
-            pharmacist: payload.pharmacist,
-            member: selectedMemberDetails ? selectedMemberDetails.fullName : 'ลูกค้าทั่วไป',
-            saleDate: new Date()
-        };
-
-        posResponseMsg.textContent = 'บันทึกการขายสำเร็จ!';
-        posResponseMsg.className = 'text-center text-sm font-semibold mt-2 text-emerald-600';
-        posSubmitSaleBtn.classList.add('hidden');
-        posPostSaleActions.classList.remove('hidden');
-        
-    } catch (error) {
-        console.error('Error saving sale:', error);
-        posResponseMsg.textContent = `เกิดข้อผิดพลาด: ${error.message}`;
-        posResponseMsg.className = 'text-center text-sm font-semibold mt-2 text-red-600';
-        posSubmitSaleBtn.disabled = false;
-    }
-});
-
 // ป้องกันการลงทะเบียน event listener ซ้ำ
 if (!posForm._eventListenerAdded) {
     posForm._eventListenerAdded = true; // ตั้งค่าตัวแปรเพื่อป้องกันการลงทะเบียนซ้ำ
-    
+
     posForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        if (posCart.length === 0) { showCustomAlert('กรุณาเพิ่มสินค้าลงตะกร้าก่อน'); return; }
-        if (!document.getElementById('posPharmacist').value) { showCustomAlert('กรุณากรอกชื่อเภสัชกร'); return; }
-        
-        // ป้องกันการ submit ซ้ำ
-        if (posForm.dataset.submitted === 'true') return;
-        posForm.dataset.submitted = 'true';
-        posSubmitSaleBtn.disabled = true;
-        posResponseMsg.textContent = '';
-        
-        const payload = {
-            memberId: selectedMemberDetails ? selectedMemberDetails.memberId : null,
-            pharmacist: document.getElementById('posPharmacist').value,
-            total: parseFloat(posTotalAmount.dataset.total) || 0,
-            items: posCart.map(item => ({
-                inventoryId: item.inventoryId,
-                drugId: item.drugId,
-                quantity: item.quantity,
-                price: parseFloat(item.price),
-                tradeName: item.tradeName,
-                genericName: item.genericName,
-                lot: item.lot
-            }))
-        };
-        
-        console.log('ส่ง payload:', payload); // เพิ่ม log สำหรับ debug
-        
-        try {
-            const result = await apiPost('sales', payload);
-            console.log('การบันทึกสำเร็จ:', result);
-            
-            lastSaleData = {
-                items: [...posCart],
-                total: posTotalAmount.dataset.total,
-                cashReceived: posCashReceived.value,
-                changeGiven: posChangeGiven.textContent,
-                pharmacist: payload.pharmacist,
-                member: selectedMemberDetails ? selectedMemberDetails.fullName : 'ลูกค้าทั่วไป',
-                saleDate: new Date()
-            };
-
-            posResponseMsg.textContent = 'บันทึกการขายสำเร็จ!';
-            posResponseMsg.className = 'text-center text-sm font-semibold mt-2 text-emerald-600';
-            posSubmitSaleBtn.classList.add('hidden');
-            posPostSaleActions.classList.remove('hidden');
-            
-        } catch (error) {
-            console.error('Error saving sale:', error);
-            posResponseMsg.textContent = `เกิดข้อผิดพลาด: ${error.message}`;
-            posResponseMsg.className = 'text-center text-sm font-semibold mt-2 text-red-600';
-            posForm.dataset.submitted = 'false'; // คืนสถานะเพื่อให้สามารถลองใหม่ได้
-            posSubmitSaleBtn.disabled = false;
-        }
+        await submitPosSale({ guardSubmit: true });
     });
 } else {
     console.log("Event listener ถูกกำหนดไว้แล้ว");
@@ -2892,6 +3015,10 @@ function printReceipt(saleData) {
         showCustomAlert('ไม่มีข้อมูลการขายสำหรับพิมพ์');
         return;
     }
+
+    const safePharmacistName = escapeHtml(saleData.pharmacist || '-');
+    const safePharmacistId = saleData.pharmacistId ? escapeHtml(saleData.pharmacistId) : '';
+    const pharmacistDisplay = safePharmacistId ? `${safePharmacistName} (${safePharmacistId})` : safePharmacistName;
 
     let receiptContent = `
         <!DOCTYPE html>
@@ -2916,7 +3043,7 @@ function printReceipt(saleData) {
                 <h3>ใบเสร็จรับเงิน/ใบกำกับภาษีอย่างย่อ</h3>
                 <p>วันที่: ${(new Date(saleData.saleDate)).toLocaleString('th-TH')}</p>
                 <p>ลูกค้า: ${saleData.member}</p>
-                <p>ผู้ขาย: ${saleData.pharmacist}</p>
+                <p>ผู้ขาย: ${pharmacistDisplay}</p>
                 <hr>
                 <table>
                     <thead>
@@ -3018,6 +3145,9 @@ function loadReports() {
     updateReportExportButtons(false);
     lastReportParams = null;
     lastKpiData = null;
+    if (generateReportBtn) {
+        setTimeout(() => generateReportBtn.click(), 0);
+    }
 }
 
 function updateReportPickers() {
@@ -3056,6 +3186,7 @@ generateReportBtn.addEventListener('click', async () => {
     const type = reportTypeEl.value;
     const isKpiType = KPI_TYPES.includes(type);
     if (reportSummaryEl) reportSummaryEl.innerHTML = '';
+    reportResultTable.innerHTML = `<p class="text-center text-slate-500">กำลังสร้างรายงาน...</p>`;
 
     if (isKpiType) {
         const period = reportPeriodEl ? reportPeriodEl.value : 'monthly';
@@ -3404,16 +3535,21 @@ function buildThaiFdaSection(thaiFda) {
                                 </tr>
                             </thead>
                             <tbody>
-                                ${transactions.map(item => `
+                                ${transactions.map(item => {
+                                    const pharmacistText = item.pharmacist
+                                        ? `${escapeHtml(item.pharmacist)}${item.pharmacistId ? ` (${escapeHtml(item.pharmacistId)})` : ''}`
+                                        : '-';
+                                    return `
                                     <tr class="border-b">
                                         <td class="px-4 py-2">${formatThaiDateDisplay(item.saleDate)}</td>
                                         <td class="px-4 py-2">${escapeHtml(item.tradeName || '-')}</td>
                                         <td class="px-4 py-2">${escapeHtml(item.legalCategory || '-')}</td>
                                         <td class="px-4 py-2">${formatNumberDisplay(item.quantitySold, 0)} หน่วย</td>
                                         <td class="px-4 py-2">${formatCurrencyDisplay(item.lineTotal)}</td>
-                                        <td class="px-4 py-2">${escapeHtml(item.pharmacist || '-')}</td>
+                                        <td class="px-4 py-2">${pharmacistText}</td>
                                     </tr>
-                                `).join('')}
+                                    `;
+                                }).join('')}
                             </tbody>
                         </table>
                     </div>
@@ -3679,14 +3815,17 @@ async function loadStaffs() {
     try {
         staffDataCache = await apiCall('staffs');
         renderStaffsTableFromCache();
+        renderPosPharmacistOptions(Array.isArray(staffDataCache) ? staffDataCache : []);
     } catch (e) {
         staffsTable.innerHTML = `<p class="text-red-500">ไม่สามารถโหลดข้อมูลเจ้าหน้าที่ได้</p>`;
         selectedStaffIds.clear();
         updateStaffSelectionUI();
+        renderPosPharmacistOptions(Array.isArray(staffDataCache) ? staffDataCache : []);
     }
 }
 
 function renderStaffsTableFromCache() {
+    renderPosPharmacistOptions(Array.isArray(staffDataCache) ? staffDataCache : []);
     if (!Array.isArray(staffDataCache) || staffDataCache.length === 0) {
         staffsTable.innerHTML = `<p class="text-center text-slate-500">ไม่พบข้อมูลเจ้าหน้าที่</p>`;
         selectedStaffIds.clear();

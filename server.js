@@ -340,7 +340,7 @@ async function buildKpiReport(period = 'monthly', referenceDate = null) {
   const { start, end } = range;
   const [salesRows, inventoryRows, lastSalesRows] = await Promise.all([
     runQuery(
-      `SELECT s.saleId, s.saleDate, s.memberId, s.pharmacist, s.totalAmount,
+      `SELECT s.saleId, s.saleDate, s.memberId, s.pharmacistId, s.pharmacist, s.totalAmount,
               s.quantitySold, s.pricePerUnit, s.drugId, s.lotNumber,
               f.tradeName, f.genericName, f.pharmaCategory, f.legalCategory
        FROM Sales s
@@ -448,6 +448,7 @@ async function buildKpiReport(period = 'monthly', referenceDate = null) {
         tradeName: row.tradeName || row.drugId,
         legalCategory: row.legalCategory,
         quantitySold: row.quantitySold,
+        pharmacistId: row.pharmacistId,
         pharmacist: row.pharmacist,
         lineTotal
       });
@@ -765,13 +766,21 @@ function buildKpiCsvRows(report, sections = ['sales', 'inventory', 'thaiFda']) {
     if (Array.isArray(thaiFda.transactions) && thaiFda.transactions.length > 0) {
       thaiFda.transactions.forEach((txn, index) => {
         const saleDate = txn.saleDate ? new Date(txn.saleDate) : null;
+        const categoryInfo = txn.legalCategory ? `ประเภท ${txn.legalCategory}` : '';
+        const quantityInfo = `จำนวน ${formatNumber(txn.quantitySold, 0)} หน่วย`;
+        const pharmacistInfo = txn.pharmacist
+          ? `ผู้ขาย ${txn.pharmacist}${txn.pharmacistId ? ` (${txn.pharmacistId})` : ''}`
+          : '';
+        const valueInfo = `มูลค่า ${formatNumber(txn.lineTotal)} บาท`;
+        const detailTwo = [categoryInfo, quantityInfo].filter(Boolean).join(' | ');
+        const detailThree = [pharmacistInfo, valueInfo].filter(Boolean).join(' | ');
         rows.push([
           'รายงาน อย.-รายการ',
           `ลำดับ ${index + 1}`,
           txn.tradeName || txn.saleId || '-',
           saleDate ? formatThaiDate(saleDate) : '-',
-          `จำนวน ${formatNumber(txn.quantitySold, 0)} หน่วย`,
-          `มูลค่า ${formatNumber(txn.lineTotal)} บาท`
+          detailTwo,
+          detailThree
         ]);
       });
     }
@@ -1281,43 +1290,68 @@ app.post('/api/inventory', authenticateToken, async (req, res) => {
 // API สำหรับ Sales
 app.post('/api/sales', authenticateToken, async (req, res) => {
   try {
-    const payload = req.body;
+    const payload = req.body || {};
     const saleId = generateId();
     const saleDate = new Date().toISOString();
-    
+    const memberId = payload.memberId || 'N/A';
+    const pharmacistId = payload.pharmacistId || null;
+    const pharmacistName = payload.pharmacistName || payload.pharmacist || null;
+    const totalAmount = Number(payload.total || 0);
+
+    if (!Array.isArray(payload.items) || payload.items.length === 0) {
+      return res.status(400).json({ error: 'ไม่มีรายการสินค้าที่จะบันทึกการขาย' });
+    }
+
+    if (!pharmacistName || !pharmacistId) {
+      return res.status(400).json({ error: 'กรุณาเลือกผู้ขายจากรายชื่อเจ้าหน้าที่' });
+    }
+
     console.log('Payload ที่ได้รับ:', payload); // เพิ่ม log สำหรับ debugging
-    
+
     // บันทึกข้อมูลการขายแต่ละรายการ
     for (const item of payload.items) {
       console.log('กำลังบันทึก item:', item); // เพิ่ม log สำหรับ debugging
-      
+
       await runStatement(
-        `INSERT INTO Sales 
-        (saleId, saleDate, memberId, pharmacist, totalAmount, inventoryId, 
-         quantitySold, pricePerUnit, drugId, lotNumber) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO Sales
+        (saleId, saleDate, memberId, pharmacistId, pharmacist, totalAmount, inventoryId,
+         quantitySold, pricePerUnit, drugId, lotNumber)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          saleId, saleDate, payload.memberId || 'N/A', payload.pharmacist,
-          payload.total, item.inventoryId, item.quantity, item.price,
-          item.drugId, item.lot || 'N/A' // เพิ่มค่าเริ่มต้นหากไม่มี lot
+          saleId,
+          saleDate,
+          memberId,
+          pharmacistId,
+          pharmacistName,
+          totalAmount,
+          item.inventoryId,
+          item.quantity,
+          Number(item.price),
+          item.drugId,
+          item.lot || 'N/A'
         ]
       );
-      
+
       // อัปเดต inventory
       await runStatement(
-        `UPDATE Inventory 
-         SET quantity = quantity - ? 
+        `UPDATE Inventory
+         SET quantity = quantity - ?
          WHERE inventoryId = ?`,
         [item.quantity, item.inventoryId]
       );
     }
-    
+
     res.json({ status: 'success', saleId });
-    await logActivity('SALE_CREATE', `บันทึกการขายยอดรวม ${Number(payload.total || 0).toFixed(2)} บาท`, {
-      entity: 'Sales',
-      entityId: saleId,
-      performedBy: req.user?.username || payload.pharmacist || null
-    });
+    const saleValueText = Number.isFinite(totalAmount) ? totalAmount.toFixed(2) : '0.00';
+    await logActivity(
+      'SALE_CREATE',
+      `บันทึกการขายยอดรวม ${saleValueText} บาท โดย ${pharmacistName} (${pharmacistId})`,
+      {
+        entity: 'Sales',
+        entityId: saleId,
+        performedBy: req.user?.username || pharmacistName || null
+      }
+    );
   } catch (error) {
     console.error('Error processing sale:', error); // เพิ่ม log สำหรับ debugging
     res.status(500).json({ error: error.message });
@@ -1502,8 +1536,8 @@ app.get('/api/member/:memberId/purchases', authenticateToken, async (req, res) =
   try {
     const memberId = req.params.memberId;
     const purchases = await runQuery(
-      `SELECT s.saleId, s.saleDate, f.tradeName, f.genericName, s.quantitySold, 
-       s.pricePerUnit, (s.quantitySold * s.pricePerUnit) as totalItemPrice, s.pharmacist
+      `SELECT s.saleId, s.saleDate, f.tradeName, f.genericName, s.quantitySold,
+       s.pricePerUnit, (s.quantitySold * s.pricePerUnit) as totalItemPrice, s.pharmacistId, s.pharmacist
        FROM Sales s
        LEFT JOIN Formulary f ON s.drugId = f.drugId
        WHERE s.memberId = ?
@@ -1904,12 +1938,13 @@ app.get('/api/sales/summary', authenticateToken, async (req, res) => {
     
     // ดึงข้อมูลยอดขายตามเภสัชกร
     const salesByStaff = await runQuery(`
-      SELECT 
+      SELECT
+        pharmacistId,
         pharmacist,
         COUNT(*) as transactionCount,
         SUM(totalAmount) as totalSales
       FROM Sales
-      GROUP BY pharmacist
+      GROUP BY pharmacistId, pharmacist
       ORDER BY totalSales DESC
     `);
     
@@ -1948,6 +1983,7 @@ app.get('/api/sales/date/:date', authenticateToken, async (req, res) => {
       'ราคา/หน่วย': parseFloat(sale.pricePerUnit).toFixed(2),
       'รวม': (sale.quantitySold * sale.pricePerUnit).toFixed(2),
       'ผู้ขาย': sale.pharmacist,
+      'รหัสผู้ขาย': sale.pharmacistId || '-',
       'Sale ID': sale.saleId
     }));
     
@@ -1995,6 +2031,7 @@ app.get('/api/sales/week/:date', authenticateToken, async (req, res) => {
       'ราคา/หน่วย': parseFloat(sale.pricePerUnit).toFixed(2),
       'รวม': (sale.quantitySold * sale.pricePerUnit).toFixed(2),
       'ผู้ขาย': sale.pharmacist,
+      'รหัสผู้ขาย': sale.pharmacistId || '-',
       'Sale ID': sale.saleId
     }));
     
@@ -2036,6 +2073,7 @@ app.get('/api/sales/month/:year/:month', authenticateToken, async (req, res) => 
       'ราคา/หน่วย': parseFloat(sale.pricePerUnit).toFixed(2),
       'รวม': (sale.quantitySold * sale.pricePerUnit).toFixed(2),
       'ผู้ขาย': sale.pharmacist,
+      'รหัสผู้ขาย': sale.pharmacistId || '-',
       'Sale ID': sale.saleId
     }));
     
@@ -2077,6 +2115,7 @@ app.get('/api/sales/year/:year', authenticateToken, async (req, res) => {
       'ราคา/หน่วย': parseFloat(sale.pricePerUnit).toFixed(2),
       'รวม': (sale.quantitySold * sale.pricePerUnit).toFixed(2),
       'ผู้ขาย': sale.pharmacist,
+      'รหัสผู้ขาย': sale.pharmacistId || '-',
       'Sale ID': sale.saleId
     }));
     
@@ -2123,7 +2162,7 @@ app.get('/api/export/:reportType', authenticateToken, async (req, res) => {
     switch(reportType) {
       case 'sales':
         data = await runQuery(`
-          SELECT s.saleId, s.saleDate, m.fullName as memberName, s.pharmacist,
+          SELECT s.saleId, s.saleDate, m.fullName as memberName, s.pharmacistId, s.pharmacist,
                  s.totalAmount, f.tradeName, s.quantitySold, s.pricePerUnit,
                  (s.quantitySold * s.pricePerUnit) as itemTotal
           FROM Sales s
@@ -2362,6 +2401,7 @@ app.get('/api/sales', authenticateToken, async (req, res) => {
       'ราคา/หน่วย': parseFloat(sale.pricePerUnit).toFixed(2),
       'รวม': (sale.quantitySold * sale.pricePerUnit).toFixed(2),
       'ผู้ขาย': sale.pharmacist,
+      'รหัสผู้ขาย': sale.pharmacistId || '-',
       'Sale ID': sale.saleId
     }));
     

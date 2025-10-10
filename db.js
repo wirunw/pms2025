@@ -102,6 +102,7 @@ db.serialize(() => {
       saleId TEXT UNIQUE NOT NULL,
       saleDate TEXT DEFAULT CURRENT_TIMESTAMP,
       memberId TEXT,
+      pharmacistId TEXT,
       pharmacist TEXT NOT NULL,
       totalAmount REAL NOT NULL,
       inventoryId TEXT NOT NULL,
@@ -113,6 +114,23 @@ db.serialize(() => {
       FOREIGN KEY (drugId) REFERENCES Formulary (drugId)
     )
   `);
+
+  db.all("PRAGMA table_info('Sales')", (err, columns) => {
+    if (err) {
+      console.error('ตรวจสอบโครงสร้างตาราง Sales ไม่สำเร็จ:', err.message);
+      return;
+    }
+    const hasPharmacistId = Array.isArray(columns) && columns.some((col) => col.name === 'pharmacistId');
+    if (!hasPharmacistId) {
+      db.run("ALTER TABLE Sales ADD COLUMN pharmacistId TEXT", (alterErr) => {
+        if (alterErr) {
+          console.error('เพิ่มคอลัมน์ pharmacistId ให้ตาราง Sales ไม่สำเร็จ:', alterErr.message);
+        } else {
+          console.log('เพิ่มคอลัมน์ pharmacistId ให้กับตาราง Sales');
+        }
+      });
+    }
+  });
 
   // สร้างตาราง Staff (เภสัชกร/เจ้าหน้าที่)
   db.run(`
