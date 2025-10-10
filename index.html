@@ -764,6 +764,10 @@
                             <button id="clearDrugSelectionBtn" class="px-3 py-1 text-sm bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed" disabled>ยกเลิกการเลือก</button>
                             <button id="refreshDrugsBtn" class="px-3 py-1 text-sm bg-slate-200 rounded-lg hover:bg-slate-300">Refresh</button>
                         </div>
+                        <div class="flex flex-wrap items-center gap-2 md:justify-end">
+                            <button id="exportDrugsCsvBtn" class="px-3 py-1 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed" disabled>ส่งออก CSV</button>
+                            <button id="exportDrugsPdfBtn" class="px-3 py-1 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed" disabled>บันทึกเป็น PDF</button>
+                        </div>
                     </div>
                 </div>
                 <div id="formularyTable" class="overflow-x-auto"></div>
@@ -1975,7 +1979,19 @@ const refreshDrugsBtn = document.getElementById('refreshDrugsBtn');
 const deleteSelectedDrugsBtn = document.getElementById('deleteSelectedDrugsBtn');
 const clearDrugSelectionBtn = document.getElementById('clearDrugSelectionBtn');
 const drugSelectionInfo = document.getElementById('drugSelectionInfo');
+const exportDrugsCsvBtn = document.getElementById('exportDrugsCsvBtn');
+const exportDrugsPdfBtn = document.getElementById('exportDrugsPdfBtn');
 const selectedDrugIds = new Set();
+
+function updateDrugExportAvailability() {
+    const hasData = Array.isArray(formularyDataCache) && formularyDataCache.length > 0;
+    if (exportDrugsCsvBtn) {
+        exportDrugsCsvBtn.disabled = !hasData;
+    }
+    if (exportDrugsPdfBtn) {
+        exportDrugsPdfBtn.disabled = !hasData;
+    }
+}
 
 const formularyActions = [{
     label: 'แก้ไข',
@@ -2001,8 +2017,10 @@ async function loadFormulary() {
         renderFormularyTableFromCache();
     } catch (e) {
         formularyTable.innerHTML = `<p class="text-red-500">ไม่สามารถโหลดข้อมูลยาได้</p>`;
+        formularyDataCache = [];
         selectedDrugIds.clear();
         updateDrugSelectionUI();
+        updateDrugExportAvailability();
     }
 }
 
@@ -2011,6 +2029,7 @@ function renderFormularyTableFromCache() {
         formularyTable.innerHTML = `<p class="text-center text-slate-500">ไม่พบข้อมูลยา</p>`;
         selectedDrugIds.clear();
         updateDrugSelectionUI();
+        updateDrugExportAvailability();
         return;
     }
 
@@ -2038,6 +2057,7 @@ function renderFormularyTableFromCache() {
     renderTable(formularyTable, formularyDataCache, null, options);
 
     updateDrugSelectionUI();
+    updateDrugExportAvailability();
 }
 
 function handleDrugSelectionChange(checkbox) {
@@ -2321,6 +2341,81 @@ if (clearDrugSelectionBtn) {
 }
 if (cancelDrugEditBtn) {
     cancelDrugEditBtn.addEventListener('click', cancelDrugEdit);
+}
+if (exportDrugsCsvBtn) {
+    exportDrugsCsvBtn.addEventListener('click', () => {
+        if (!Array.isArray(formularyDataCache) || formularyDataCache.length === 0) {
+            showCustomAlert('ยังไม่มีข้อมูลยาให้ส่งออก');
+            return;
+        }
+        downloadFile('/api/export/drugs', 'formulary_master', { extension: 'csv', includeDate: true });
+    });
+}
+if (exportDrugsPdfBtn) {
+    exportDrugsPdfBtn.addEventListener('click', async () => {
+        if (!Array.isArray(formularyDataCache) || formularyDataCache.length === 0) {
+            showCustomAlert('ยังไม่มีข้อมูลยาให้บันทึกเป็น PDF');
+            return;
+        }
+        if (!window.html2canvas || !window.jspdf) {
+            showCustomAlert('เบราว์เซอร์ไม่รองรับการสร้าง PDF อัตโนมัติ');
+            return;
+        }
+        const tableElement = formularyTable ? formularyTable.querySelector('table') : null;
+        if (!tableElement) {
+            showCustomAlert('ไม่พบตารางข้อมูลยาสำหรับสร้าง PDF');
+            return;
+        }
+
+        exportDrugsPdfBtn.disabled = true;
+        try {
+            const exportWrapper = document.createElement('div');
+            exportWrapper.style.position = 'fixed';
+            exportWrapper.style.left = '-10000px';
+            exportWrapper.style.top = '0';
+            exportWrapper.style.background = '#ffffff';
+            exportWrapper.style.padding = '24px';
+            exportWrapper.style.width = `${tableElement.scrollWidth + 48}px`;
+
+            const clonedTable = tableElement.cloneNode(true);
+            clonedTable.style.width = '100%';
+            clonedTable.style.borderCollapse = 'collapse';
+            exportWrapper.appendChild(clonedTable);
+            document.body.appendChild(exportWrapper);
+
+            const canvas = await window.html2canvas(exportWrapper, { scale: 2, backgroundColor: '#ffffff' });
+            document.body.removeChild(exportWrapper);
+
+            const imgData = canvas.toDataURL('image/png');
+            const orientation = canvas.width >= canvas.height ? 'l' : 'p';
+            const pdf = new window.jspdf.jsPDF({ orientation, unit: 'pt', format: 'a4' });
+            const margin = 24;
+            const pageWidth = pdf.internal.pageSize.getWidth();
+            const pageHeight = pdf.internal.pageSize.getHeight();
+            const renderWidth = pageWidth - margin * 2;
+            const renderHeight = canvas.height * (renderWidth / canvas.width);
+            let heightLeft = renderHeight;
+            let position = margin;
+
+            pdf.addImage(imgData, 'PNG', margin, position, renderWidth, renderHeight);
+            heightLeft -= pageHeight - margin * 2;
+
+            while (heightLeft > 0) {
+                pdf.addPage();
+                position = margin - (renderHeight - heightLeft);
+                pdf.addImage(imgData, 'PNG', margin, position, renderWidth, renderHeight);
+                heightLeft -= pageHeight - margin * 2;
+            }
+
+            const filename = `formulary_${new Date().toISOString().slice(0, 10)}.pdf`;
+            pdf.save(filename);
+        } catch (error) {
+            console.error('Formulary PDF export error:', error);
+            showCustomAlert(`เกิดข้อผิดพลาดในการสร้าง PDF: ${error.message}`);
+        } finally {
+            exportDrugsPdfBtn.disabled = false;
+        }
+    });
 }
 
 // --- Inventory Management ---

@@ -2185,6 +2185,20 @@ app.get('/api/export/:reportType', authenticateToken, async (req, res) => {
         exportLabel = 'รายงานสินค้าคงคลัง';
         break;
 
+      case 'drugs':
+      case 'formulary':
+        data = await runQuery(`
+          SELECT drugId, tradeName, genericName, legalCategory, pharmaCategory,
+                 strength, unit, indication, caution, imageUrl,
+                 interaction1, interaction2, interaction3, interaction4, interaction5,
+                 minStock, maxStock, dateCreated
+          FROM Formulary
+          ORDER BY tradeName COLLATE NOCASE, drugId
+        `);
+        filenameBase = 'formulary_master';
+        exportLabel = 'รายการยาทั้งหมด';
+        break;
+
       case 'members':
         data = await runQuery('SELECT * FROM Members ORDER BY fullName');
         filenameBase = 'members_report';
