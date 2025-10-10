@@ -2,12 +2,25 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 // สร้างหรือเปิดฐานข้อมูล
-const dbPath = process.env.DATABASE_URL || path.resolve(__dirname, 'pharmacy.db');
-const db = new sqlite3.Database(dbPath, (err) => {
+const rawDbPath = process.env.DATABASE_URL;
+let dbPath = rawDbPath || path.resolve(__dirname, 'pharmacy.db');
+
+if (rawDbPath && rawDbPath.startsWith('file:')) {
+  dbPath = rawDbPath;
+}
+
+if (rawDbPath && rawDbPath.startsWith('sqlite://')) {
+  dbPath = rawDbPath.replace('sqlite://', '');
+}
+
+const isFileUri = dbPath.startsWith('file:');
+const openMode = sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE | (isFileUri ? sqlite3.OPEN_URI : 0);
+
+const db = new sqlite3.Database(dbPath, openMode, (err) => {
   if (err) {
     console.error('เกิดข้อผิดพลาดในการเปิดฐานข้อมูล:', err.message);
   } else {
-    console.log('เชื่อมต่อฐานข้อมูล SQLite สำเร็จ');
+    console.log(`เชื่อมต่อฐานข้อมูล SQLite สำเร็จที่ ${dbPath}`);
   }
 });
 
@@ -131,7 +144,20 @@ db.serialize(() => {
     )
   `);
 
+  // ตารางสำหรับบันทึกกิจกรรมของระบบ
+  db.run(`
+    CREATE TABLE IF NOT EXISTS ActivityLog (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      activityType TEXT NOT NULL,
+      entity TEXT,
+      entityId TEXT,
+      description TEXT,
+      performedBy TEXT,
+      createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   console.log('สร้างตารางฐานข้อมูลเรียบร้อยแล้ว');
 });
 
-module.exports = db;
+module.exports = { db, dbPath };

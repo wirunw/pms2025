@@ -715,10 +715,17 @@
                     <button type="submit" class="md:col-span-3 btn-emerald">บันทึกข้อมูลยา</button>
                 </form>
             </div>
-             <div class="mt-6 bg-white p-6 rounded-lg shadow">
-                <div class="flex justify-between items-center mb-4">
+            <div class="mt-6 bg-white p-6 rounded-lg shadow">
+                <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-4">
                     <h3 class="font-bold text-lg">รายการยาทั้งหมด</h3>
-                    <button id="refreshDrugsBtn" class="px-3 py-1 text-sm bg-slate-200 rounded-lg hover:bg-slate-300">Refresh</button>
+                    <div class="flex flex-col md:flex-row md:items-center gap-3 w-full lg:w-auto">
+                        <div id="drugSelectionInfo" class="text-sm text-slate-500">ยังไม่ได้เลือกรายการ</div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button id="deleteSelectedDrugsBtn" class="px-3 py-1 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed" disabled>ลบรายการที่เลือก</button>
+                            <button id="clearDrugSelectionBtn" class="px-3 py-1 text-sm bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed" disabled>ยกเลิกการเลือก</button>
+                            <button id="refreshDrugsBtn" class="px-3 py-1 text-sm bg-slate-200 rounded-lg hover:bg-slate-300">Refresh</button>
+                        </div>
+                    </div>
                 </div>
                 <div id="formularyTable" class="overflow-x-auto"></div>
             </div>
@@ -910,6 +917,14 @@
                     <p id="settingsStatusMsg" class="text-sm text-emerald-600 mt-2"></p>
                 </div>
             </div>
+            <div class="bg-white p-6 rounded-lg shadow mt-6">
+                <h3 class="font-bold text-lg mb-4">สำรองฐานข้อมูล</h3>
+                <p class="text-sm text-slate-600 mb-4">ดาวน์โหลดไฟล์ฐานข้อมูล SQLite ปัจจุบันเพื่อสำรองข้อมูล คำสั่งนี้ใช้ได้เฉพาะผู้ดูแลระบบเท่านั้น</p>
+                <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+                    <button id="downloadBackupBtn" class="bg-emerald-600 text-white py-2 px-4 rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed">ดาวน์โหลดไฟล์สำรอง (.db)</button>
+                    <p class="text-xs text-slate-500">ควรจัดเก็บไฟล์สำรองไว้ในที่ปลอดภัย</p>
+                </div>
+            </div>
         </div>
 
         <!-- Purchase History Modal -->
@@ -979,14 +994,29 @@ function showPage(pageId) {
     const activeLinks = document.querySelectorAll(`.nav-link[href=\"#${pageId}\"]`);
     activeLinks.forEach(link => link.classList.add('active'));
     mobileMenu.classList.add('hidden');
+    const token = localStorage.getItem('authToken');
     switch (pageId) {
-        case 'dashboard': loadDashboard('daily'); break;
-        case 'members': loadMembers(); break;
-        case 'formulary': loadFormulary(); break;
-        case 'inventory': loadInventorySummary(); break;
-        case 'pos': loadPOSData(); break;
-        case 'reports': loadReports(); break;
-        case 'settings': loadSettings(); break;
+        case 'dashboard':
+            if (token) loadDashboard('daily');
+            break;
+        case 'members':
+            if (token) loadMembers();
+            break;
+        case 'formulary':
+            if (token) loadFormulary();
+            break;
+        case 'inventory':
+            if (token) loadInventorySummary();
+            break;
+        case 'pos':
+            if (token) loadPOSData();
+            break;
+        case 'reports':
+            if (token) loadReports();
+            break;
+        case 'settings':
+            loadSettings();
+            break;
     }
 }
 
@@ -1042,6 +1072,16 @@ customConfirmCancelBtn.addEventListener('click', () => {
     customConfirmModal.classList.add('hidden');
     if (confirmResolve) confirmResolve(false);
 });
+
+function escapeHtml(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
 
 // --- Loader and API Helper ---
 const showLoader = () => globalLoader.classList.remove('hidden');
@@ -1113,20 +1153,59 @@ async function apiPost(endpoint, payload) {
     }
 }
 
+async function apiDelete(endpoint, payload = {}) {
+    if (!API_URL) {
+        showCustomAlert('กรุณาตั้งค่า API Server URL ในหน้า "ตั้งค่า"');
+        return Promise.reject('URL not configured');
+    }
+    showLoader();
+    try {
+        const token = localStorage.getItem('authToken');
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch(`${API_URL}/${endpoint}`, {
+            method: 'DELETE',
+            headers,
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return await response.json();
+    } catch (error) {
+        console.error(`API DELETE call failed for endpoint '${endpoint}':`, error);
+        showCustomAlert(`เกิดข้อผิดพลาดในการลบข้อมูล: ${error.message}`);
+        throw error;
+    } finally {
+        hideLoader();
+    }
+}
+
 // --- Generic Helper Functions ---
 function renderTable(container, data, highlightKey = null, options = {}) {
     const reportSummaryEl = document.getElementById('reportSummary');
     if (reportSummaryEl) reportSummaryEl.innerHTML = '';
-    
+
     if (!container) return;
     if (!data || data.length === 0) {
         container.innerHTML = `<p class="text-center text-slate-500">ไม่พบข้อมูล</p>`;
         return;
     }
     const headers = Object.keys(data[0]);
+    const actions = options.actions || null;
+    const selectable = options.selectable || null;
+    const summarize = options.summarize || null;
+    const selectedIds = selectable && selectable.selectedIds instanceof Set ? selectable.selectedIds : new Set();
+
     let tableHtml = `<table class="w-full text-sm text-left text-slate-500"><thead class="text-xs text-slate-700 uppercase bg-slate-50"><tr>`;
+    if (selectable) {
+        const allSelected = data.length > 0 && data.every(row => selectedIds.has(row[selectable.idField]));
+        const selectAllId = selectable.selectAllId || 'select-all';
+        tableHtml += `<th scope="col" class="px-6 py-3 text-center"><input type="checkbox" id="${selectAllId}" data-role="drug-select-all" ${allSelected ? 'checked' : ''} onchange="${selectable.onToggleAll}(this.checked)"></th>`;
+    }
     headers.forEach(h => tableHtml += `<th scope="col" class="px-6 py-3">${h}</th>`);
-    if(options.actions) tableHtml += `<th scope="col" class="px-6 py-3">Actions</th>`;
+    if(actions) tableHtml += `<th scope="col" class="px-6 py-3">Actions</th>`;
     tableHtml += `</tr></thead><tbody>`;
     data.forEach(row => {
         let highlightClass = '';
@@ -1138,6 +1217,12 @@ function renderTable(container, data, highlightKey = null, options = {}) {
             else if (expiryDate < threeMonthsFromNow) highlightClass = 'bg-yellow-100';
         }
         tableHtml += `<tr class="bg-white border-b ${highlightClass}">`;
+        if (selectable) {
+            const rawId = row[selectable.idField];
+            const attributeId = String(rawId ?? '').replace(/"/g, '&quot;');
+            const isChecked = selectedIds.has(rawId);
+            tableHtml += `<td class="px-6 py-4 align-middle text-center"><input type="checkbox" class="${selectable.checkboxClass || ''}" data-role="drug-select" data-id="${attributeId}" ${isChecked ? 'checked' : ''} onchange="${selectable.onToggle}(this)"></td>`;
+        }
         headers.forEach(h => {
             let value = row[h] ?? '';
             if ((h.toLowerCase().includes('date') || h.toLowerCase().includes('dob') || h.toLowerCase().includes('expiry')) && value) {
@@ -1148,10 +1233,11 @@ function renderTable(container, data, highlightKey = null, options = {}) {
             }
             tableHtml += `<td class="px-6 py-4 align-middle">${value}</td>`;
         });
-        if(options.actions) {
+        if(actions) {
             tableHtml += `<td class="px-6 py-4 align-middle space-y-2">`;
-            options.actions.forEach(action => {
-                tableHtml += `<div><button class="w-full text-white py-1 px-2 rounded ${action.class}" onclick="${action.handler}('${row[action.idField]}')">${action.label}</button></div>`;
+            actions.forEach(action => {
+                const actionId = String(row[action.idField] ?? '').replace(/'/g, "\\'");
+                tableHtml += `<div><button class="w-full text-white py-1 px-2 rounded ${action.class}" onclick="${action.handler}('${actionId}')">${action.label}</button></div>`;
             });
             tableHtml += `</td>`;
         }
@@ -1160,9 +1246,9 @@ function renderTable(container, data, highlightKey = null, options = {}) {
     tableHtml += `</tbody></table>`;
     container.innerHTML = tableHtml;
 
-    if (options.summarize && reportSummaryEl) {
-        const sum = data.reduce((acc, row) => acc + (Number(row[options.summarize.column]) || 0), 0);
-        reportSummaryEl.innerHTML = `<strong>${options.summarize.label}:</strong> ${sum.toFixed(2)} บาท`;
+    if (summarize && reportSummaryEl) {
+        const sum = data.reduce((acc, row) => acc + (Number(row[summarize.column]) || 0), 0);
+        reportSummaryEl.innerHTML = `<strong>${summarize.label}:</strong> ${sum.toFixed(2)} บาท`;
     }
 }
 
@@ -1199,7 +1285,7 @@ async function loadDashboard(period) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
         
-        const data = await apiCall(`dashboard/${period}`, {}, false, { signal: controller.signal });
+        const data = await apiCall(`dashboard/${period}`, {}, true, { signal: controller.signal });
         clearTimeout(timeoutId);
         
         // Update dashboard metrics
@@ -1486,26 +1572,152 @@ refreshMembersBtn.addEventListener('click', loadMembers);
 const addDrugFormEl = document.getElementById('addDrugForm');
 const formularyTable = document.getElementById('formularyTable');
 const refreshDrugsBtn = document.getElementById('refreshDrugsBtn');
+const deleteSelectedDrugsBtn = document.getElementById('deleteSelectedDrugsBtn');
+const clearDrugSelectionBtn = document.getElementById('clearDrugSelectionBtn');
+const drugSelectionInfo = document.getElementById('drugSelectionInfo');
+const selectedDrugIds = new Set();
+
+const formularyActions = [{
+    label: 'ถ่ายรูป',
+    class: 'bg-blue-500 hover:bg-blue-600',
+    handler: 'openCameraModal',
+    idField: 'drugId'
+}, {
+    label: 'อัปโหลด',
+    class: 'bg-indigo-500 hover:bg-indigo-600',
+    handler: 'openImageUpload',
+    idField: 'drugId'
+}];
 
 async function loadFormulary() {
     formularyTable.innerHTML = '';
     try {
-        const drugs = await apiCall('drugs');
-        renderTable(formularyTable, drugs, null, {
-            actions: [{
-                label: 'ถ่ายรูป',
-                class: 'bg-blue-500 hover:bg-blue-600',
-                handler: 'openCameraModal',
-                idField: 'drugId'
-            }, {
-                label: 'อัปโหลด',
-                class: 'bg-indigo-500 hover:bg-indigo-600',
-                handler: 'openImageUpload',
-                idField: 'drugId'
-            }]
-        });
+        formularyDataCache = await apiCall('drugs');
+        renderFormularyTableFromCache();
     } catch (e) {
         formularyTable.innerHTML = `<p class="text-red-500">ไม่สามารถโหลดข้อมูลยาได้</p>`;
+        selectedDrugIds.clear();
+        updateDrugSelectionUI();
+    }
+}
+
+function renderFormularyTableFromCache() {
+    if (!Array.isArray(formularyDataCache) || formularyDataCache.length === 0) {
+        formularyTable.innerHTML = `<p class="text-center text-slate-500">ไม่พบข้อมูลยา</p>`;
+        selectedDrugIds.clear();
+        updateDrugSelectionUI();
+        return;
+    }
+
+    const availableIds = new Set(formularyDataCache.map(drug => drug.drugId));
+    Array.from(selectedDrugIds).forEach(id => {
+        if (!availableIds.has(id)) {
+            selectedDrugIds.delete(id);
+        }
+    });
+
+    renderTable(formularyTable, formularyDataCache, null, {
+        selectable: {
+            idField: 'drugId',
+            selectAllId: 'drugSelectAll',
+            onToggle: 'handleDrugSelectionChange',
+            onToggleAll: 'handleDrugSelectAll',
+            selectedIds: selectedDrugIds,
+            checkboxClass: 'drug-selection-checkbox'
+        },
+        actions: formularyActions
+    });
+
+    updateDrugSelectionUI();
+}
+
+function handleDrugSelectionChange(checkbox) {
+    const drugId = checkbox?.dataset?.id;
+    if (!drugId) return;
+    if (checkbox.checked) {
+        selectedDrugIds.add(drugId);
+    } else {
+        selectedDrugIds.delete(drugId);
+    }
+    updateDrugSelectionUI();
+}
+
+function handleDrugSelectAll(isChecked) {
+    const checkboxes = formularyTable.querySelectorAll('input[data-role="drug-select"]');
+    checkboxes.forEach(cb => {
+        cb.checked = isChecked;
+        const id = cb.dataset.id;
+        if (!id) return;
+        if (isChecked) {
+            selectedDrugIds.add(id);
+        } else {
+            selectedDrugIds.delete(id);
+        }
+    });
+    updateDrugSelectionUI();
+}
+
+function updateDrugSelectionUI() {
+    const count = selectedDrugIds.size;
+    if (drugSelectionInfo) {
+        drugSelectionInfo.textContent = count > 0 ? `เลือกแล้ว ${count} รายการ` : 'ยังไม่ได้เลือกรายการ';
+    }
+    if (deleteSelectedDrugsBtn) {
+        deleteSelectedDrugsBtn.disabled = count === 0;
+    }
+    if (clearDrugSelectionBtn) {
+        clearDrugSelectionBtn.disabled = count === 0;
+    }
+    const selectAllCheckbox = document.getElementById('drugSelectAll');
+    if (selectAllCheckbox) {
+        const checkboxes = formularyTable.querySelectorAll('input[data-role="drug-select"]');
+        const total = checkboxes.length;
+        const selectedInView = Array.from(checkboxes).filter(cb => cb.checked).length;
+        selectAllCheckbox.checked = total > 0 && selectedInView === total;
+        selectAllCheckbox.indeterminate = selectedInView > 0 && selectedInView < total;
+    }
+}
+
+async function deleteSelectedDrugs() {
+    if (selectedDrugIds.size === 0) {
+        showCustomAlert('กรุณาเลือกรายการยาอย่างน้อย 1 รายการ');
+        return;
+    }
+
+    const confirmed = await showConfirmation(`ยืนยันการลบ ${selectedDrugIds.size} รายการหรือไม่?`, 'ยืนยันการลบข้อมูลยา');
+    if (!confirmed) return;
+
+    if (deleteSelectedDrugsBtn) deleteSelectedDrugsBtn.disabled = true;
+    try {
+        const result = await apiDelete('drugs', { ids: Array.from(selectedDrugIds) });
+        const deleted = result?.deleted || [];
+        const blocked = result?.blocked || [];
+        selectedDrugIds.clear();
+        await loadFormulary();
+
+        let message = '';
+        if (deleted.length > 0) {
+            message += `<p>ลบรายการยาสำเร็จ ${deleted.length} รายการ</p>`;
+        } else {
+            message += '<p>ไม่มีรายการใดถูกลบ</p>';
+        }
+
+        if (blocked.length > 0) {
+            message += '<p class="mt-2 text-sm text-slate-600">ไม่สามารถลบรายการต่อไปนี้:</p><ul class="list-disc pl-6 text-sm text-slate-600">';
+            blocked.forEach(item => {
+                const name = escapeHtml(item.tradeName || item.drugId || 'ไม่ทราบชื่อยา');
+                const reason = escapeHtml(item.reason || 'มีข้อจำกัด');
+                message += `<li>${name} - ${reason}</li>`;
+            });
+            message += '</ul>';
+        }
+
+        showCustomAlert(message);
+    } catch (error) {
+        // ข้อผิดพลาดถูกจัดการภายใน apiDelete แล้ว
+    } finally {
+        if (deleteSelectedDrugsBtn) deleteSelectedDrugsBtn.disabled = false;
+        updateDrugSelectionUI();
     }
 }
 
@@ -1611,10 +1823,21 @@ addDrugFormEl.addEventListener('submit', async (e) => {
         showCustomAlert('บันทึกข้อมูลยาสำเร็จ!');
         addDrugFormEl.reset();
         loadFormulary();
-    } catch (error) { /* Handled by apiPost */ } 
+    } catch (error) { /* Handled by apiPost */ }
     finally { btn.disabled = false; }
 });
 refreshDrugsBtn.addEventListener('click', loadFormulary);
+if (deleteSelectedDrugsBtn) {
+    deleteSelectedDrugsBtn.addEventListener('click', deleteSelectedDrugs);
+}
+if (clearDrugSelectionBtn) {
+    clearDrugSelectionBtn.addEventListener('click', () => {
+        selectedDrugIds.clear();
+        const checkboxes = formularyTable.querySelectorAll('input[data-role="drug-select"]');
+        checkboxes.forEach(cb => { cb.checked = false; });
+        updateDrugSelectionUI();
+    });
+}
 
 // --- Inventory Management ---
 const goodsReceivedForm = document.getElementById('goodsReceivedForm');
@@ -2358,6 +2581,7 @@ generateReportBtn.addEventListener('click', async () => {
 const settingsScriptUrlEl = document.getElementById('settingsScriptUrl');
 const settingsSaveBtn = document.getElementById('settingsSaveBtn');
 const settingsStatusMsg = document.getElementById('settingsStatusMsg');
+const downloadBackupBtn = document.getElementById('downloadBackupBtn');
 
 function loadSettings() {
     const storedUrl = localStorage.getItem('pharmacyAppApiUrl');
@@ -2579,6 +2803,8 @@ function logout() {
     // แสดง modal login
     loginModal.classList.remove('hidden');
     document.querySelectorAll('.page, header, main').forEach(el => el.style.display = 'none');
+    selectedDrugIds.clear();
+    updateDrugSelectionUI();
 }
 
 // --- User Management ---
@@ -2801,30 +3027,36 @@ async function loadAdminDashboard() {
 }
 
 async function loadRecentActivities() {
-    // For demo purposes, showing placeholder activities
-    // In a real system, this would connect to an activity log
     const activityList = document.getElementById('admin-activity-list');
-    activityList.innerHTML = '';
-    
-    // Add some placeholder activities
-    const activities = [
-        { time: new Date(Date.now() - 3600000).toLocaleString('th-TH'), activity: 'การขายยา', user: 'เภสัชกรสมศรี', details: 'ขายยาพาราเซตามอล 2 ชิ้น' },
-        { time: new Date(Date.now() - 7200000).toLocaleString('th-TH'), activity: 'เพิ่มยาใหม่', user: 'ผู้ดูแลระบบ', details: 'เพิ่มยา Amoxicillin ลงในระบบ' },
-        { time: new Date(Date.now() - 10800000).toLocaleString('th-TH'), activity: 'เพิ่มลูกค้าใหม่', user: 'เภสัชกรสมชาย', details: 'เพิ่มลูกค้าใหม่ชื่อ นางสาวสมหญิง' },
-        { time: new Date(Date.now() - 14400000).toLocaleString('th-TH'), activity: 'รับสินค้าเข้า', user: 'เจ้าหน้าที่คลัง', details: 'รับยาพาราเซตามอล Lot: P2024A จำนวน 100 ชิ้น' }
-    ];
-    
-    activities.forEach(activity => {
-        const row = document.createElement('tr');
-        row.className = 'bg-white border-b';
-        row.innerHTML = `
-            <td class="px-6 py-4">${activity.time}</td>
-            <td class="px-6 py-4">${activity.activity}</td>
-            <td class="px-6 py-4">${activity.user}</td>
-            <td class="px-6 py-4">${activity.details}</td>
-        `;
-        activityList.appendChild(row);
-    });
+    if (!activityList) return;
+
+    activityList.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-slate-500">กำลังโหลด...</td></tr>';
+
+    try {
+        const activities = await apiCall('activities', { limit: 20 });
+        if (!activities || activities.length === 0) {
+            activityList.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-slate-500">ยังไม่มีบันทึกกิจกรรม</td></tr>';
+            return;
+        }
+
+        activityList.innerHTML = activities.map(activity => {
+            const timeText = activity.createdAt ? new Date(activity.createdAt).toLocaleString('th-TH') : '-';
+            const typeText = escapeHtml(activity.activityType || '-');
+            const userText = escapeHtml(activity.performedBy || '-');
+            const detailText = escapeHtml(activity.description || '');
+            return `
+                <tr class="bg-white border-b">
+                    <td class="px-6 py-4">${escapeHtml(timeText)}</td>
+                    <td class="px-6 py-4">${typeText}</td>
+                    <td class="px-6 py-4">${userText}</td>
+                    <td class="px-6 py-4">${detailText}</td>
+                </tr>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('Load activities error:', error);
+        activityList.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-red-500">ไม่สามารถโหลดบันทึกกิจกรรมได้</td></tr>';
+    }
 }
 
 // Export buttons for admin dashboard
@@ -2844,40 +3076,90 @@ document.getElementById('export-staffs-btn').addEventListener('click', () => {
     downloadFile('/api/export/staffs', 'staffs_report');
 });
 
+if (downloadBackupBtn) {
+    downloadBackupBtn.addEventListener('click', async () => {
+        const token = localStorage.getItem('authToken');
+        if (!token) {
+            showCustomAlert('กรุณาเข้าสู่ระบบก่อน');
+            return;
+        }
+        const confirmed = await showConfirmation('ยืนยันการดาวน์โหลดไฟล์ฐานข้อมูล (.db) หรือไม่?', 'สำรองฐานข้อมูล');
+        if (!confirmed) return;
+        downloadBackupBtn.disabled = true;
+        try {
+            await downloadFile('/api/export/database', 'pharmacy_backup', { extension: 'db', includeDate: false });
+        } finally {
+            downloadBackupBtn.disabled = false;
+        }
+    });
+}
+
 // Function to download CSV files
-function downloadFile(endpoint, filename) {
+async function downloadFile(endpoint, filename, options = {}) {
     const token = localStorage.getItem('authToken');
     if (!token) {
         showCustomAlert('กรุณาเข้าสู่ระบบก่อน');
         return;
     }
-    
-    // Create a temporary link and trigger download
-    const link = document.createElement('a');
-    link.href = `${API_URL.replace('/api', '')}${endpoint}`;
-    link.download = `${filename}_${new Date().toISOString().slice(0, 10)}.csv`;
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    
-    // Add authorization header by using fetch first, then creating the download link
-    // Note: This is a simplified implementation - in production, you'd need proper authentication for file downloads
-    fetch(`${API_URL.replace('/api', '')}${endpoint}`, {
-        headers: {
-            'Authorization': `Bearer ${token}`
+
+    const { extension = 'csv', includeDate = true } = options;
+    const suffix = includeDate ? `_${new Date().toISOString().replace(/[:.]/g, '-')}` : '';
+    const fallbackName = `${filename}${suffix}.${extension}`;
+
+    try {
+        const response = await fetch(`${API_URL.replace('/api', '')}${endpoint}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            let errorMessage = `HTTP error! status: ${response.status}`;
+            try {
+                const text = await response.text();
+                if (text) {
+                    try {
+                        const parsed = JSON.parse(text);
+                        if (parsed.error) {
+                            errorMessage = parsed.error;
+                        } else {
+                            errorMessage = text;
+                        }
+                    } catch {
+                        errorMessage = text;
+                    }
+                }
+            } catch (_) {}
+            throw new Error(errorMessage);
         }
-    })
-    .then(response => response.blob())
-    .then(blob => {
+
+        let downloadName = fallbackName;
+        const disposition = response.headers.get('Content-Disposition');
+        if (disposition) {
+            const match = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+            if (match) {
+                const encodedName = match[1] || match[2];
+                try {
+                    downloadName = decodeURIComponent(encodedName);
+                } catch {
+                    downloadName = encodedName;
+                }
+            }
+        }
+
+        const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
         link.href = url;
+        link.download = downloadName;
+        document.body.appendChild(link);
         link.click();
+        link.remove();
         window.URL.revokeObjectURL(url);
-        document.body.removeChild(link);
-    })
-    .catch(error => {
+    } catch (error) {
         console.error('Download error:', error);
-        showCustomAlert('เกิดข้อผิดพลาดในการดาวน์โหลดไฟล์');
-    });
+        showCustomAlert(`เกิดข้อผิดพลาดในการดาวน์โหลดไฟล์: ${error.message}`);
+    }
 }
 
 // --- Purchase History Modal ---
