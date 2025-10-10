@@ -7,6 +7,7 @@ const fs = require('fs');
 const { fileURLToPath } = require('url');
 const bcrypt = require('bcryptjs'); // เพิ่ม module สำหรับ hashing รหัสผ่าน
 const jwt = require('jsonwebtoken'); // เพิ่ม module สำหรับ JWT
+const packageJson = require('./package.json');
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -14,6 +15,13 @@ app.use(cors());
 app.use(bodyParser.json({ limit: '1mb' }));
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.text({ type: 'text/plain' }));
+app.use((req, res, next) => {
+  if (req.method === 'GET' && req.accepts('html')) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+  }
+  next();
+});
 // Serve static files from the root directory
 app.use(express.static(path.join(__dirname)));
 
@@ -128,6 +136,146 @@ function resolveDbFilePath(rawPath) {
 
 const resolvedDbFilePath = resolveDbFilePath(dbPath);
 
+const THAI_MONTHS = [
+  'มกราคม',
+  'กุมภาพันธ์',
+  'มีนาคม',
+  'เมษายน',
+  'พฤษภาคม',
+  'มิถุนายน',
+  'กรกฎาคม',
+  'สิงหาคม',
+  'กันยายน',
+  'ตุลาคม',
+  'พฤศจิกายน',
+  'ธันวาคม'
+];
+
+function parseReferenceDate(referenceDate) {
+  if (!referenceDate) {
+    return new Date();
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(referenceDate)) {
+    const [year, month, day] = referenceDate.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  }
+
+  if (/^\d{4}-\d{2}$/.test(referenceDate)) {
+    const [year, month] = referenceDate.split('-').map(Number);
+    return new Date(year, month - 1, 1);
+  }
+
+  if (/^\d{4}$/.test(referenceDate)) {
+    const year = Number(referenceDate);
+    return new Date(year, 0, 1);
+  }
+
+  const parsed = new Date(referenceDate);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed;
+  }
+
+  return new Date();
+}
+
+function formatThaiDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return '';
+  }
+  const day = date.getDate();
+  const monthName = THAI_MONTHS[date.getMonth()] || '';
+  const year = date.getFullYear() + 543;
+  return `${day} ${monthName} ${year}`.trim();
+}
+
+function formatThaiDateRange(startDate, endDate) {
+  if (!(startDate instanceof Date) || !(endDate instanceof Date)) {
+    return '';
+  }
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return '';
+  }
+
+  if (startDate.toDateString() === endDate.toDateString()) {
+    return formatThaiDate(startDate);
+  }
+
+  const sameMonth =
+    startDate.getMonth() === endDate.getMonth() && startDate.getFullYear() === endDate.getFullYear();
+
+  if (sameMonth) {
+    const monthName = THAI_MONTHS[startDate.getMonth()] || '';
+    const year = startDate.getFullYear() + 543;
+    return `${startDate.getDate()}-${endDate.getDate()} ${monthName} ${year}`.trim();
+  }
+
+  return `${formatThaiDate(startDate)} - ${formatThaiDate(endDate)}`.trim();
+}
+
+function getPeriodRangeWithReference(period, referenceDate) {
+  const baseDate = parseReferenceDate(referenceDate);
+  if (Number.isNaN(baseDate.getTime())) {
+    return null;
+  }
+
+  baseDate.setHours(0, 0, 0, 0);
+  const start = new Date(baseDate);
+  const end = new Date(baseDate);
+  let label = '';
+
+  switch (period) {
+    case 'daily':
+      end.setHours(23, 59, 59, 999);
+      label = `รายวัน (${formatThaiDate(start)})`;
+      break;
+    case 'weekly': {
+      const day = start.getDay();
+      const diff = (day === 0 ? -6 : 1) - day; // start on Monday
+      start.setDate(start.getDate() + diff);
+      end.setTime(start.getTime());
+      end.setDate(start.getDate() + 6);
+      end.setHours(23, 59, 59, 999);
+      label = `รายสัปดาห์ (${formatThaiDateRange(start, end)})`;
+      break;
+    }
+    case 'monthly':
+      start.setDate(1);
+      end.setTime(start.getTime());
+      end.setMonth(start.getMonth() + 1);
+      end.setDate(0);
+      end.setHours(23, 59, 59, 999);
+      label = `รายเดือน (${THAI_MONTHS[start.getMonth()] || ''} ${start.getFullYear() + 543})`;
+      break;
+    case 'quarterly': {
+      const quarter = Math.floor(start.getMonth() / 3) + 1;
+      const quarterStartMonth = (quarter - 1) * 3;
+      start.setMonth(quarterStartMonth, 1);
+      end.setMonth(quarterStartMonth + 3, 0);
+      end.setHours(23, 59, 59, 999);
+      label = `รายไตรมาส (ไตรมาส ${quarter}/${start.getFullYear() + 543})`;
+      break;
+    }
+    case 'yearly':
+      start.setMonth(0, 1);
+      end.setFullYear(start.getFullYear() + 1, 0, 0);
+      end.setHours(23, 59, 59, 999);
+      label = `รายปี (${start.getFullYear() + 543})`;
+      break;
+    default:
+      return null;
+  }
+
+  return {
+    start: start.toISOString(),
+    end: end.toISOString(),
+    label,
+    startDate: start,
+    endDate: end,
+    displayRange: formatThaiDateRange(start, end)
+  };
+}
+
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
@@ -162,6 +310,474 @@ async function logActivity(activityType, description, { entity = null, entityId 
   } catch (error) {
     console.error('บันทึกกิจกรรมล้มเหลว:', error.message);
   }
+}
+
+const CONTROLLED_KEYWORDS = ['ยาควบคุม', 'ยาเสพติด', 'วัตถุออกฤทธิ์'];
+
+function calculateLineTotal(quantity, pricePerUnit) {
+  const qty = Number(quantity) || 0;
+  const price = Number(pricePerUnit) || 0;
+  return qty * price;
+}
+
+function formatNumber(value, fractionDigits = 2) {
+  const num = Number(value);
+  if (Number.isNaN(num)) {
+    return '0';
+  }
+  return num.toLocaleString('th-TH', {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits
+  });
+}
+
+async function buildKpiReport(period = 'monthly', referenceDate = null) {
+  const range = getPeriodRangeWithReference(period, referenceDate);
+  if (!range) {
+    throw new Error('รูปแบบช่วงเวลารายงานไม่ถูกต้อง');
+  }
+
+  const { start, end } = range;
+  const [salesRows, inventoryRows, lastSalesRows] = await Promise.all([
+    runQuery(
+      `SELECT s.saleId, s.saleDate, s.memberId, s.pharmacist, s.totalAmount,
+              s.quantitySold, s.pricePerUnit, s.drugId, s.lotNumber,
+              f.tradeName, f.genericName, f.pharmaCategory, f.legalCategory
+       FROM Sales s
+       LEFT JOIN Formulary f ON s.drugId = f.drugId
+       WHERE s.saleDate >= ? AND s.saleDate <= ?
+       ORDER BY s.saleDate ASC`,
+      [start, end]
+    ),
+    runQuery(
+      `SELECT i.inventoryId, i.drugId, i.lotNumber, i.expiryDate, i.quantity,
+              i.costPrice, i.sellingPrice, i.referenceId, i.barcode, i.dateReceived,
+              f.tradeName, f.genericName, f.pharmaCategory, f.legalCategory,
+              f.minStock, f.maxStock
+       FROM Inventory i
+       LEFT JOIN Formulary f ON i.drugId = f.drugId`
+    ),
+    runQuery(
+      `SELECT drugId, MAX(saleDate) as lastSaleDate
+       FROM Sales
+       GROUP BY drugId`
+    )
+  ]);
+
+  const saleTotalsById = new Map();
+  const uniqueCustomers = new Set();
+  const productMap = new Map();
+  const categoryMap = new Map();
+  const legalSummaryMap = new Map();
+  const thaiFdaTransactions = [];
+
+  let totalRevenue = 0;
+  let totalUnitsSold = 0;
+  let dangerousCount = 0;
+  let controlledCount = 0;
+
+  salesRows.forEach((row) => {
+    const lineTotal = calculateLineTotal(row.quantitySold, row.pricePerUnit);
+    totalRevenue += lineTotal;
+    totalUnitsSold += Number(row.quantitySold) || 0;
+
+    if (row.memberId && row.memberId !== 'N/A') {
+      uniqueCustomers.add(row.memberId);
+    }
+
+    if (!saleTotalsById.has(row.saleId)) {
+      saleTotalsById.set(row.saleId, Number(row.totalAmount) || lineTotal);
+    }
+
+    const productKey = row.drugId || row.tradeName || row.saleId;
+    if (!productMap.has(productKey)) {
+      productMap.set(productKey, {
+        drugId: row.drugId,
+        tradeName: row.tradeName || 'ไม่ระบุชื่อการค้า',
+        genericName: row.genericName || '',
+        pharmaCategory: row.pharmaCategory || 'ไม่ระบุหมวด',
+        quantitySold: 0,
+        revenue: 0
+      });
+    }
+    const productEntry = productMap.get(productKey);
+    productEntry.quantitySold += Number(row.quantitySold) || 0;
+    productEntry.revenue += lineTotal;
+
+    const categoryKey = row.pharmaCategory || 'ไม่ระบุหมวด';
+    if (!categoryMap.has(categoryKey)) {
+      categoryMap.set(categoryKey, {
+        pharmaCategory: categoryKey,
+        quantitySold: 0,
+        revenue: 0
+      });
+    }
+    const categoryEntry = categoryMap.get(categoryKey);
+    categoryEntry.quantitySold += Number(row.quantitySold) || 0;
+    categoryEntry.revenue += lineTotal;
+
+    const legalCategory = row.legalCategory || 'ไม่ระบุ';
+    if (!legalSummaryMap.has(legalCategory)) {
+      legalSummaryMap.set(legalCategory, {
+        category: legalCategory,
+        transactions: 0,
+        quantity: 0,
+        revenue: 0
+      });
+    }
+    const legalEntry = legalSummaryMap.get(legalCategory);
+    legalEntry.transactions += 1;
+    legalEntry.quantity += Number(row.quantitySold) || 0;
+    legalEntry.revenue += lineTotal;
+
+    const normalizedLegal = legalCategory.toLowerCase();
+    const isDangerous = normalizedLegal.includes('ยาอันตราย');
+    const isControlled = CONTROLLED_KEYWORDS.some((keyword) => normalizedLegal.includes(keyword));
+
+    if (isDangerous) {
+      dangerousCount += 1;
+    }
+    if (isControlled) {
+      controlledCount += 1;
+    }
+
+    if (isDangerous || isControlled) {
+      thaiFdaTransactions.push({
+        saleId: row.saleId,
+        saleDate: row.saleDate,
+        tradeName: row.tradeName || row.drugId,
+        legalCategory: row.legalCategory,
+        quantitySold: row.quantitySold,
+        pharmacist: row.pharmacist,
+        lineTotal
+      });
+    }
+  });
+
+  const topProducts = Array.from(productMap.values())
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 5);
+
+  const topCategories = Array.from(categoryMap.values())
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 5);
+
+  const totalTransactions = saleTotalsById.size;
+  const avgTicket = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
+
+  const perDrugInventory = new Map();
+  let stockValue = 0;
+  inventoryRows.forEach((row) => {
+    const quantity = Number(row.quantity) || 0;
+    const value = quantity * (Number(row.sellingPrice) || 0);
+    stockValue += value;
+
+    if (!perDrugInventory.has(row.drugId)) {
+      perDrugInventory.set(row.drugId, {
+        drugId: row.drugId,
+        tradeName: row.tradeName || row.drugId,
+        minStock: Number(row.minStock) || 0,
+        maxStock: Number(row.maxStock) || 0,
+        quantity: 0,
+        lots: []
+      });
+    }
+
+    const entry = perDrugInventory.get(row.drugId);
+    entry.quantity += quantity;
+    entry.lots.push({
+      inventoryId: row.inventoryId,
+      lotNumber: row.lotNumber,
+      expiryDate: row.expiryDate,
+      quantity,
+      sellingPrice: Number(row.sellingPrice) || 0
+    });
+  });
+
+  const totalUnits = Array.from(perDrugInventory.values()).reduce((acc, item) => acc + item.quantity, 0);
+
+  const belowMin = Array.from(perDrugInventory.values())
+    .filter((item) => item.minStock > 0 && item.quantity < item.minStock)
+    .map((item) => ({
+      drugId: item.drugId,
+      tradeName: item.tradeName,
+      quantity: item.quantity,
+      minStock: item.minStock,
+      diff: item.quantity - item.minStock
+    }));
+
+  const today = new Date();
+  const nearExpiryThreshold = new Date();
+  nearExpiryThreshold.setDate(today.getDate() + 90);
+
+  const nearExpiry = inventoryRows
+    .filter((row) => {
+      if (!row.expiryDate) return false;
+      const expiryDate = new Date(row.expiryDate);
+      if (Number.isNaN(expiryDate.getTime())) return false;
+      return expiryDate >= today && expiryDate <= nearExpiryThreshold;
+    })
+    .map((row) => {
+      const expiryDate = new Date(row.expiryDate);
+      const diffTime = expiryDate.getTime() - today.getTime();
+      const daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return {
+        inventoryId: row.inventoryId,
+        drugId: row.drugId,
+        tradeName: row.tradeName || row.drugId,
+        lotNumber: row.lotNumber,
+        expiryDate: row.expiryDate,
+        quantity: Number(row.quantity) || 0,
+        daysRemaining
+      };
+    })
+    .sort((a, b) => a.daysRemaining - b.daysRemaining);
+
+  const slowMovingCutoff = new Date();
+  slowMovingCutoff.setDate(today.getDate() - 90);
+  const lastSalesMap = new Map();
+  lastSalesRows.forEach((row) => {
+    if (row.drugId) {
+      lastSalesMap.set(row.drugId, row.lastSaleDate);
+    }
+  });
+
+  const slowMoving = Array.from(perDrugInventory.values())
+    .map((item) => {
+      const lastSaleDate = lastSalesMap.get(item.drugId);
+      return {
+        drugId: item.drugId,
+        tradeName: item.tradeName,
+        quantity: item.quantity,
+        lastSaleDate
+      };
+    })
+    .filter((item) => {
+      if (item.quantity <= 0) return false;
+      if (!item.lastSaleDate) return true;
+      const lastSale = new Date(item.lastSaleDate);
+      return Number.isNaN(lastSale.getTime()) || lastSale < slowMovingCutoff;
+    })
+    .sort((a, b) => {
+      const dateA = a.lastSaleDate ? new Date(a.lastSaleDate).getTime() : 0;
+      const dateB = b.lastSaleDate ? new Date(b.lastSaleDate).getTime() : 0;
+      return dateA - dateB;
+    });
+
+  return {
+    meta: {
+      period,
+      label: range.label,
+      start,
+      end,
+      displayRange: range.displayRange,
+      generatedAt: new Date().toISOString(),
+      referenceDate: referenceDate || null
+    },
+    sales: {
+      totalRevenue,
+      totalTransactions,
+      avgTicket,
+      totalUnitsSold,
+      uniqueCustomers: uniqueCustomers.size,
+      topProducts,
+      topCategories
+    },
+    inventory: {
+      totalSkus: perDrugInventory.size,
+      totalLots: inventoryRows.length,
+      totalUnits,
+      stockValue,
+      belowMin,
+      nearExpiry,
+      slowMoving
+    },
+    thaiFda: {
+      summary: Array.from(legalSummaryMap.values()),
+      transactions: thaiFdaTransactions,
+      totalDangerous: dangerousCount,
+      totalControlled: controlledCount
+    }
+  };
+}
+
+function stringifyCsvRows(rows) {
+  if (!Array.isArray(rows)) {
+    return '';
+  }
+
+  return rows
+    .map((row) =>
+      row
+        .map((value) => {
+          if (value === null || value === undefined) {
+            return '';
+          }
+          const str = String(value);
+          if (/[",\n]/.test(str)) {
+            return '"' + str.replace(/"/g, '""') + '"';
+          }
+          return str;
+        })
+        .join(',')
+    )
+    .join('\n');
+}
+
+function buildKpiCsvRows(report, sections = ['sales', 'inventory', 'thaiFda']) {
+  if (!report || typeof report !== 'object') {
+    return [];
+  }
+
+  const rows = [];
+  const header = ['หมวด', 'หัวข้อ', 'ค่า', 'รายละเอียดเพิ่มเติม 1', 'รายละเอียดเพิ่มเติม 2', 'รายละเอียดเพิ่มเติม 3'];
+  rows.push(header);
+
+  const meta = report.meta || {};
+  const startDate = meta.start ? new Date(meta.start) : null;
+  const endDate = meta.end ? new Date(meta.end) : null;
+  const generatedAt = meta.generatedAt ? new Date(meta.generatedAt) : null;
+  rows.push([
+    'เมตา',
+    'ช่วงเวลารายงาน',
+    meta.displayRange || '-',
+    startDate ? `เริ่ม ${formatThaiDate(startDate)}` : '',
+    endDate ? `สิ้นสุด ${formatThaiDate(endDate)}` : '',
+    generatedAt ? `ออกรายงาน ${formatThaiDate(generatedAt)}` : ''
+  ]);
+
+  if (sections.includes('sales') && report.sales) {
+    const sales = report.sales;
+    rows.push(['งานขาย', 'ยอดขายรวม (บาท)', formatNumber(sales.totalRevenue), '', '', '']);
+    rows.push(['งานขาย', 'จำนวนธุรกรรม', formatNumber(sales.totalTransactions, 0), '', '', '']);
+    rows.push(['งานขาย', 'ยอดซื้อเฉลี่ยต่อบิล (บาท)', formatNumber(sales.avgTicket), '', '', '']);
+    rows.push(['งานขาย', 'จำนวนหน่วยที่ขาย', formatNumber(sales.totalUnitsSold, 0), '', '', '']);
+    rows.push(['งานขาย', 'จำนวนสมาชิกที่ซื้อ', formatNumber(sales.uniqueCustomers, 0), '', '', '']);
+
+    if (Array.isArray(sales.topProducts) && sales.topProducts.length > 0) {
+      sales.topProducts.forEach((product, index) => {
+        rows.push([
+          'งานขาย-สินค้าขายดี',
+          `อันดับ ${index + 1}`,
+          product.tradeName || product.drugId || '-',
+          product.genericName ? `ชื่อสามัญ ${product.genericName}` : '',
+          `ขาย ${formatNumber(product.quantitySold, 0)} หน่วย`,
+          `รายได้ ${formatNumber(product.revenue)} บาท`
+        ]);
+      });
+    }
+
+    if (Array.isArray(sales.topCategories) && sales.topCategories.length > 0) {
+      sales.topCategories.forEach((category) => {
+        rows.push([
+          'งานขาย-หมวดสินค้า',
+          category.pharmaCategory || '-',
+          '',
+          `ขาย ${formatNumber(category.quantitySold, 0)} หน่วย`,
+          `รายได้ ${formatNumber(category.revenue)} บาท`,
+          ''
+        ]);
+      });
+    }
+  }
+
+  if (sections.includes('inventory') && report.inventory) {
+    const inventory = report.inventory;
+    rows.push(['งานคลัง', 'จำนวน SKU ทั้งหมด', formatNumber(inventory.totalSkus, 0), '', '', '']);
+    rows.push(['งานคลัง', 'จำนวน Lot ทั้งหมด', formatNumber(inventory.totalLots, 0), '', '', '']);
+    rows.push(['งานคลัง', 'จำนวนหน่วยคงคลัง', formatNumber(inventory.totalUnits, 0), '', '', '']);
+    rows.push(['งานคลัง', 'มูลค่าสินค้าคงคลัง (บาท)', formatNumber(inventory.stockValue), '', '', '']);
+
+    if (Array.isArray(inventory.belowMin) && inventory.belowMin.length > 0) {
+      inventory.belowMin.forEach((item) => {
+        rows.push([
+          'งานคลัง-ต่ำกว่า Min',
+          item.tradeName || item.drugId || '-',
+          '',
+          `คงเหลือ ${formatNumber(item.quantity, 0)} หน่วย`,
+          `ขั้นต่ำ ${formatNumber(item.minStock, 0)} หน่วย`,
+          ''
+        ]);
+      });
+    }
+
+    if (Array.isArray(inventory.nearExpiry) && inventory.nearExpiry.length > 0) {
+      inventory.nearExpiry.forEach((item) => {
+        const expiryDate = item.expiryDate ? new Date(item.expiryDate) : null;
+        rows.push([
+          'งานคลัง-ใกล้หมดอายุ',
+          `${item.tradeName || item.drugId || '-'} (Lot ${item.lotNumber || '-'})`,
+          expiryDate ? formatThaiDate(expiryDate) : '-',
+          `คงเหลือ ${formatNumber(item.quantity, 0)} หน่วย`,
+          `เหลือ ${formatNumber(item.daysRemaining, 0)} วัน`,
+          ''
+        ]);
+      });
+    }
+
+    if (Array.isArray(inventory.slowMoving) && inventory.slowMoving.length > 0) {
+      inventory.slowMoving.forEach((item) => {
+        const lastSaleDate = item.lastSaleDate ? new Date(item.lastSaleDate) : null;
+        rows.push([
+          'งานคลัง-ขายช้า',
+          item.tradeName || item.drugId || '-',
+          '',
+          `คงเหลือ ${formatNumber(item.quantity, 0)} หน่วย`,
+          lastSaleDate ? `ขายล่าสุด ${formatThaiDate(lastSaleDate)}` : 'ยังไม่เคยขาย',
+          ''
+        ]);
+      });
+    }
+  }
+
+  if (sections.includes('thaiFda') && report.thaiFda) {
+    const thaiFda = report.thaiFda;
+    rows.push([
+      'รายงาน อย.',
+      'จำนวนรายการยาอันตราย',
+      formatNumber(thaiFda.totalDangerous, 0),
+      '',
+      '',
+      ''
+    ]);
+    rows.push([
+      'รายงาน อย.',
+      'จำนวนรายการยาควบคุม/วัตถุออกฤทธิ์',
+      formatNumber(thaiFda.totalControlled, 0),
+      '',
+      '',
+      ''
+    ]);
+
+    if (Array.isArray(thaiFda.summary) && thaiFda.summary.length > 0) {
+      thaiFda.summary.forEach((item) => {
+        rows.push([
+          'รายงาน อย.-สรุป',
+          item.category || '-',
+          '',
+          `ธุรกรรม ${formatNumber(item.transactions, 0)} ครั้ง`,
+          `ปริมาณ ${formatNumber(item.quantity, 0)} หน่วย`,
+          `มูลค่า ${formatNumber(item.revenue)} บาท`
+        ]);
+      });
+    }
+
+    if (Array.isArray(thaiFda.transactions) && thaiFda.transactions.length > 0) {
+      thaiFda.transactions.forEach((txn, index) => {
+        const saleDate = txn.saleDate ? new Date(txn.saleDate) : null;
+        rows.push([
+          'รายงาน อย.-รายการ',
+          `ลำดับ ${index + 1}`,
+          txn.tradeName || txn.saleId || '-',
+          saleDate ? formatThaiDate(saleDate) : '-',
+          `จำนวน ${formatNumber(txn.quantitySold, 0)} หน่วย`,
+          `มูลค่า ${formatNumber(txn.lineTotal)} บาท`
+        ]);
+      });
+    }
+  }
+
+  return rows;
 }
 
 // API สำหรับ Member
@@ -305,6 +921,55 @@ app.post('/api/drugs', authenticateToken, async (req, res) => {
     await logActivity('FORMULARY_CREATE', `เพิ่มยา ${payload.tradeName || payload.drugId}`, {
       entity: 'Formulary',
       entityId: payload.drugId,
+      performedBy: req.user?.username || null
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/drugs/:drugId', authenticateToken, async (req, res) => {
+  try {
+    const drugId = req.params.drugId;
+    const existing = await runQuery('SELECT drugId, tradeName FROM Formulary WHERE drugId = ?', [drugId]);
+
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'ไม่พบรายการยาที่ต้องการแก้ไข' });
+    }
+
+    const payload = req.body || {};
+    await runStatement(
+      `UPDATE Formulary
+       SET tradeName = ?, genericName = ?, legalCategory = ?, pharmaCategory = ?,
+           strength = ?, unit = ?, indication = ?, caution = ?, imageUrl = ?,
+           interaction1 = ?, interaction2 = ?, interaction3 = ?, interaction4 = ?, interaction5 = ?,
+           minStock = ?, maxStock = ?
+       WHERE drugId = ?`,
+      [
+        payload.tradeName,
+        payload.genericName,
+        payload.legalCategory,
+        payload.pharmaCategory,
+        payload.strength,
+        payload.unit,
+        payload.indication,
+        payload.caution,
+        payload.imageUrl,
+        payload.interaction1,
+        payload.interaction2,
+        payload.interaction3,
+        payload.interaction4,
+        payload.interaction5,
+        payload.minStock,
+        payload.maxStock,
+        drugId
+      ]
+    );
+
+    res.json({ status: 'success' });
+    await logActivity('FORMULARY_UPDATE', `แก้ไขข้อมูลยา ${payload.tradeName || drugId}`, {
+      entity: 'Formulary',
+      entityId: drugId,
       performedBy: req.user?.username || null
     });
   } catch (error) {
@@ -1426,13 +2091,34 @@ app.get('/api/sales/year/:year', authenticateToken, async (req, res) => {
   }
 });
 
+app.get('/api/reports/kpi', authenticateToken, async (req, res) => {
+  try {
+    const { period = 'monthly', referenceDate = null } = req.query;
+    const report = await buildKpiReport(period, referenceDate);
+    await logActivity('REPORT_VIEW', `สร้างรายงาน KPI (${report.meta?.label || period})`, {
+      entity: 'Report',
+      entityId: `kpi-${period}`,
+      performedBy: req.user?.username || null
+    });
+    res.json(report);
+  } catch (error) {
+    console.error('KPI report error:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
 // API สำหรับ export รายงานเป็น CSV
 app.get('/api/export/:reportType', authenticateToken, async (req, res) => {
   try {
     const { reportType } = req.params;
+    const { period: periodQuery = 'monthly', referenceDate = null } = req.query;
     let data = [];
     let filenameBase = '';
     let exportLabel = '';
+    let csvContent = '';
+    let isCustomCsv = false;
+    let reportSections = [];
+    let kpiReport = null;
 
     switch(reportType) {
       case 'sales':
@@ -1472,12 +2158,70 @@ app.get('/api/export/:reportType', authenticateToken, async (req, res) => {
         exportLabel = 'รายงานเจ้าหน้าที่';
         break;
 
+      case 'kpi':
+      case 'kpi-all':
+      case 'kpi_all':
+        kpiReport = await buildKpiReport(periodQuery, referenceDate);
+        reportSections = ['sales', 'inventory', 'thaiFda'];
+        csvContent = stringifyCsvRows(buildKpiCsvRows(kpiReport, reportSections));
+        filenameBase = 'kpi_full_report';
+        exportLabel = `รายงาน KPI ครบมิติ (${kpiReport.meta?.label || periodQuery})`;
+        isCustomCsv = true;
+        break;
+
+      case 'kpi-sales':
+      case 'kpi_sales':
+        kpiReport = await buildKpiReport(periodQuery, referenceDate);
+        reportSections = ['sales'];
+        csvContent = stringifyCsvRows(buildKpiCsvRows(kpiReport, reportSections));
+        filenameBase = 'kpi_sales_report';
+        exportLabel = `รายงาน KPI งานขาย (${kpiReport.meta?.label || periodQuery})`;
+        isCustomCsv = true;
+        break;
+
+      case 'kpi-inventory':
+      case 'kpi_inventory':
+        kpiReport = await buildKpiReport(periodQuery, referenceDate);
+        reportSections = ['inventory'];
+        csvContent = stringifyCsvRows(buildKpiCsvRows(kpiReport, reportSections));
+        filenameBase = 'kpi_inventory_report';
+        exportLabel = `รายงาน KPI งานคลัง (${kpiReport.meta?.label || periodQuery})`;
+        isCustomCsv = true;
+        break;
+
+      case 'kpi-thai-fda':
+      case 'kpi_thai_fda':
+      case 'kpi-thai_fda':
+        kpiReport = await buildKpiReport(periodQuery, referenceDate);
+        reportSections = ['thaiFda'];
+        csvContent = stringifyCsvRows(buildKpiCsvRows(kpiReport, reportSections));
+        filenameBase = 'kpi_thai_fda_report';
+        exportLabel = `รายงานส่ง อย. (${kpiReport.meta?.label || periodQuery})`;
+        isCustomCsv = true;
+        break;
+
       default:
         return res.status(400).json({ error: 'ไม่พบประเภทรายงานที่ระบุ' });
     }
 
+    if (isCustomCsv) {
+      if (!csvContent) {
+        return res.status(404).json({ error: 'ไม่พบข้อมูล' });
+      }
+
+      const filename = `${filenameBase}_${new Date().toISOString().slice(0, 10)}.csv`;
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      await logActivity('EXPORT_CSV', `ส่งออก${exportLabel}`, {
+        entity: 'Report',
+        entityId: reportType,
+        performedBy: req.user?.username || null
+      });
+      return res.send(Buffer.from(`\uFEFF${csvContent}`, 'utf8'));
+    }
+
     const filename = `${filenameBase}_${new Date().toISOString().slice(0, 10)}.csv`;
-    
+
     // สร้าง CSV content
     if (data.length === 0) {
       return res.status(404).json({ error: 'ไม่พบข้อมูล' });
@@ -1485,7 +2229,7 @@ app.get('/api/export/:reportType', authenticateToken, async (req, res) => {
     
     // สร้าง headers จาก keys ของข้อมูล
     const headers = Object.keys(data[0]);
-    let csvContent = headers.join(',') + '\n';
+    let standardCsvContent = headers.join(',') + '\n';
     
     // เพิ่มข้อมูลแต่ละแถว
     data.forEach(row => {
@@ -1502,7 +2246,7 @@ app.get('/api/export/:reportType', authenticateToken, async (req, res) => {
         }
         return value;
       });
-      csvContent += values.join(',') + '\n';
+      standardCsvContent += values.join(',') + '\n';
     });
     
     // ส่งไฟล์ CSV กลับไป (เพิ่ม BOM เพื่อรองรับภาษาไทย)
@@ -1513,7 +2257,8 @@ app.get('/api/export/:reportType', authenticateToken, async (req, res) => {
       entityId: reportType,
       performedBy: req.user?.username || null
     });
-    res.send(`\uFEFF${csvContent}`);
+    const csvBuffer = Buffer.from(`\uFEFF${standardCsvContent}`, 'utf8');
+    res.send(csvBuffer);
 
   } catch (error) {
     console.error('Export error:', error);
@@ -1561,6 +2306,35 @@ app.get('/api/export/database', authenticateToken, async (req, res) => {
       return res.status(500).json({ error: 'ไม่มีสิทธิ์อ่านไฟล์ฐานข้อมูล' });
     }
     console.error('Database export error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/build-info', (req, res) => {
+  try {
+    const indexPath = path.join(__dirname, 'index.html');
+    const serverPath = __filename;
+    const info = {
+      branch: process.env.RAILWAY_GIT_BRANCH || process.env.GIT_BRANCH || null,
+      commit: process.env.RAILWAY_GIT_COMMIT || process.env.GIT_COMMIT || null,
+      apiVersion: packageJson.version || '1.0.0',
+      environment: process.env.NODE_ENV || 'development',
+      indexUpdatedAt: null,
+      serverUpdatedAt: null
+    };
+
+    if (fs.existsSync(indexPath)) {
+      const stats = fs.statSync(indexPath);
+      info.indexUpdatedAt = stats.mtime.toISOString();
+    }
+
+    if (fs.existsSync(serverPath)) {
+      const stats = fs.statSync(serverPath);
+      info.serverUpdatedAt = stats.mtime.toISOString();
+    }
+
+    res.json(info);
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });

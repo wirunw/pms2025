@@ -642,6 +642,7 @@
              <div class="bg-white p-6 rounded-lg shadow">
                 <h3 class="font-bold text-lg mb-4">เพิ่ม/แก้ไขรายการยา</h3>
                 <form id="addDrugForm" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <input type="hidden" id="editingDrugId">
                     <input type="text" id="drugId" placeholder="รหัสยา (SKU)" class="p-2 border rounded" required>
                     <input type="text" id="tradeName" placeholder="ชื่อการค้า" class="p-2 border rounded" required>
                     <input type="text" id="genericName" placeholder="ชื่อสามัญ" class="p-2 border rounded">
@@ -742,7 +743,10 @@
                     <input type="text" id="interaction4" placeholder="ชื่อสามัญของยาที่ตีกัน 4" class="p-2 border rounded">
                     <input type="text" id="interaction5" placeholder="ชื่อสามัญของยาที่ตีกัน 5" class="p-2 border rounded">
 
-                    <button type="submit" class="md:col-span-3 btn-emerald">บันทึกข้อมูลยา</button>
+                    <div class="md:col-span-3 flex flex-col sm:flex-row gap-3">
+                        <button type="submit" id="saveDrugBtn" class="w-full sm:w-auto btn-emerald">บันทึกข้อมูลยา</button>
+                        <button type="button" id="cancelDrugEditBtn" class="w-full sm:w-auto px-4 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 hidden">ยกเลิกการแก้ไข</button>
+                    </div>
                 </form>
             </div>
             <div class="mt-6 bg-white p-6 rounded-lg shadow">
@@ -769,12 +773,20 @@
                     <div>
                         <label for="reportType" class="text-sm font-medium">ประเภทรายงาน:</label>
                         <select id="reportType" class="p-2 border rounded bg-white">
-                            <option value="dailySales">ยอดขายรายวัน</option>
-                            <option value="weeklySales">ยอดขายรายสัปดาห์</option>
-                            <option value="monthlySales">ยอดขายรายเดือน</option>
-                            <option value="yearlySales">ยอดขายรายปี</option>
-                            <option value="inventory">รายงานสินค้าคงคลัง</option>
-                            <option value="members">รายงานข้อมูลสมาชิก</option>
+                            <option value="kpiAll" selected>สรุป KPI (ขาย/คลัง/อย.)</option>
+                            <option value="kpiSales">KPI งานขาย</option>
+                            <option value="kpiInventory">KPI งานคลัง</option>
+                            <option value="kpiThaiFda">รายงานสำหรับ อย.</option>
+                            <optgroup label="รายงานยอดขาย (เดิม)">
+                                <option value="dailySales">ยอดขายรายวัน</option>
+                                <option value="weeklySales">ยอดขายรายสัปดาห์</option>
+                                <option value="monthlySales">ยอดขายรายเดือน</option>
+                                <option value="yearlySales">ยอดขายรายปี</option>
+                            </optgroup>
+                            <optgroup label="รายงานพื้นฐานอื่น ๆ">
+                                <option value="inventory">รายงานสินค้าคงคลัง</option>
+                                <option value="members">รายงานข้อมูลสมาชิก</option>
+                            </optgroup>
                         </select>
                     </div>
                     <!-- Date pickers container -->
@@ -796,12 +808,32 @@
                             <input type="number" id="reportYear" class="p-2 border rounded w-28" placeholder="YYYY">
                         </div>
                     </div>
+                    <div id="kpi-picker-container" class="hidden flex flex-wrap items-end gap-4">
+                        <div>
+                            <label for="reportPeriod" class="text-sm font-medium">ช่วงเวลา:</label>
+                            <select id="reportPeriod" class="p-2 border rounded bg-white">
+                                <option value="daily">รายวัน</option>
+                                <option value="weekly">รายสัปดาห์</option>
+                                <option value="monthly" selected>รายเดือน</option>
+                                <option value="quarterly">รายไตรมาส</option>
+                                <option value="yearly">รายปี</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="reportReferenceDate" class="text-sm font-medium">อ้างอิงจากวันที่:</label>
+                            <input type="date" id="reportReferenceDate" class="p-2 border rounded">
+                        </div>
+                    </div>
                     <button id="generateReportBtn" class="btn-blue">สร้างรายงาน</button>
                 </div>
                 <div id="reportResultTable" class="overflow-x-auto">
                     <p class="text-center text-slate-500">กรุณาเลือกประเภทรายงานและกด "สร้างรายงาน"</p>
                 </div>
-                 <div id="reportSummary" class="mt-4 text-right font-bold"></div>
+                <div id="reportExportBar" class="mt-4 flex flex-wrap items-center gap-3 hidden">
+                    <button id="exportReportCsvBtn" class="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">ส่งออก CSV</button>
+                    <button id="exportReportPdfBtn" class="px-4 py-2 rounded-lg bg-amber-500 text-white hover:bg-amber-600">บันทึกเป็น PDF</button>
+                </div>
+                <div id="reportSummary" class="mt-4 text-right font-bold"></div>
             </div>
         </div>
         
@@ -966,6 +998,16 @@
                     <p class="text-xs text-slate-500">ควรจัดเก็บไฟล์สำรองไว้ในที่ปลอดภัย</p>
                 </div>
             </div>
+            <div class="bg-white p-6 rounded-lg shadow mt-6">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                    <h3 class="font-bold text-lg">ข้อมูลเวอร์ชันระบบ</h3>
+                    <button id="refreshBuildInfoBtn" class="w-full sm:w-auto px-4 py-2 rounded-lg border border-emerald-500 text-emerald-600 hover:bg-emerald-50 transition">รีเฟรชข้อมูล</button>
+                </div>
+                <div id="buildInfoPanel" class="text-sm text-slate-600 space-y-2">
+                    <p>กำลังโหลดข้อมูล...</p>
+                </div>
+                <p class="mt-3 text-xs text-slate-400">ใช้ตรวจสอบว่า UI และ API กำลังใช้งานเวอร์ชันเดียวกับที่ deploy ล่าสุดหรือไม่</p>
+            </div>
         </div>
 
         <!-- Purchase History Modal -->
@@ -981,7 +1023,9 @@
 
     </main>
 
-<script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" referrerpolicy="no-referrer"></script>
+    <script>
 'use strict';
 
 // ===================================================================================
@@ -1061,6 +1105,7 @@ function showPage(pageId) {
             break;
         case 'settings':
             loadSettings();
+            refreshBuildInfo();
             break;
     }
 }
@@ -1086,6 +1131,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!API_URL || API_URL === "http://localhost:3000/api") {
         // ใช้ค่าเริ่มต้น ไม่ต้องแสดง alert
     }
+    refreshBuildInfo();
     const pageId = window.location.hash.substring(1) || 'dashboard';
     showPage(pageId);
     generateAllergyFields();
@@ -1129,6 +1175,45 @@ function escapeHtml(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+
+const thaiMonthNamesShort = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+function formatNumberDisplay(value, fractionDigits = 0) {
+    const num = Number(value || 0);
+    return num.toLocaleString('th-TH', {
+        minimumFractionDigits: fractionDigits,
+        maximumFractionDigits: fractionDigits
+    });
+}
+
+function formatCurrencyDisplay(value) {
+    return `${formatNumberDisplay(value, 2)} บาท`;
+}
+
+function formatThaiDateDisplay(dateInput) {
+    const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    if (Number.isNaN(date.getTime())) {
+        return '-';
+    }
+    const day = date.getDate();
+    const monthName = thaiMonthNamesShort[date.getMonth()] || '';
+    const year = date.getFullYear() + 543;
+    return `${day} ${monthName} ${year}`.trim();
+}
+
+function formatThaiDateTimeDisplay(dateInput) {
+    const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    if (Number.isNaN(date.getTime())) {
+        return '-';
+    }
+    return date.toLocaleString('th-TH', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
 }
 
 // --- Loader and API Helper ---
@@ -1877,6 +1962,9 @@ if (cancelMemberEditBtn) {
 
 // --- Drug Formulary & Camera ---
 const addDrugFormEl = document.getElementById('addDrugForm');
+const editingDrugIdInput = document.getElementById('editingDrugId');
+const saveDrugBtn = document.getElementById('saveDrugBtn');
+const cancelDrugEditBtn = document.getElementById('cancelDrugEditBtn');
 const formularyTable = document.getElementById('formularyTable');
 const refreshDrugsBtn = document.getElementById('refreshDrugsBtn');
 const deleteSelectedDrugsBtn = document.getElementById('deleteSelectedDrugsBtn');
@@ -1885,6 +1973,11 @@ const drugSelectionInfo = document.getElementById('drugSelectionInfo');
 const selectedDrugIds = new Set();
 
 const formularyActions = [{
+    label: 'แก้ไข',
+    class: 'bg-amber-500 hover:bg-amber-600',
+    handler: 'startDrugEdit',
+    idField: 'drugId'
+}, {
     label: 'ถ่ายรูป',
     class: 'bg-blue-500 hover:bg-blue-600',
     handler: 'openCameraModal',
@@ -1998,6 +2091,59 @@ function updateDrugSelectionUI() {
         selectAllCheckbox.checked = total > 0 && selectedInView === total;
         selectAllCheckbox.indeterminate = selectedInView > 0 && selectedInView < total;
     }
+}
+
+function resetDrugForm() {
+    if (!addDrugFormEl) return;
+    addDrugFormEl.reset();
+    if (editingDrugIdInput) editingDrugIdInput.value = '';
+    if (saveDrugBtn) saveDrugBtn.textContent = 'บันทึกข้อมูลยา';
+    if (cancelDrugEditBtn) cancelDrugEditBtn.classList.add('hidden');
+    const drugIdField = document.getElementById('drugId');
+    if (drugIdField) {
+        drugIdField.disabled = false;
+        drugIdField.classList.remove('bg-slate-100', 'cursor-not-allowed', 'opacity-70');
+    }
+}
+
+function startDrugEdit(drugId) {
+    if (!Array.isArray(formularyDataCache)) return;
+    const drug = formularyDataCache.find(item => item.drugId === drugId);
+    if (!drug) {
+        showCustomAlert('ไม่พบข้อมูลยาที่ต้องการแก้ไข');
+        return;
+    }
+
+    if (editingDrugIdInput) editingDrugIdInput.value = drugId;
+    const drugIdField = document.getElementById('drugId');
+    if (drugIdField) {
+        drugIdField.value = drug.drugId || '';
+        drugIdField.disabled = true;
+        drugIdField.classList.add('bg-slate-100', 'cursor-not-allowed', 'opacity-70');
+    }
+    document.getElementById('tradeName').value = drug.tradeName || '';
+    document.getElementById('genericName').value = drug.genericName || '';
+    document.getElementById('legalCategory').value = drug.legalCategory || '';
+    document.getElementById('pharmaCategory').value = drug.pharmaCategory || '';
+    document.getElementById('strength').value = drug.strength || '';
+    document.getElementById('unit').value = drug.unit || '';
+    document.getElementById('minStock').value = drug.minStock ?? '';
+    document.getElementById('maxStock').value = drug.maxStock ?? '';
+    document.getElementById('indication').value = drug.indication || '';
+    document.getElementById('caution').value = drug.caution || '';
+    document.getElementById('interaction1').value = drug.interaction1 || '';
+    document.getElementById('interaction2').value = drug.interaction2 || '';
+    document.getElementById('interaction3').value = drug.interaction3 || '';
+    document.getElementById('interaction4').value = drug.interaction4 || '';
+    document.getElementById('interaction5').value = drug.interaction5 || '';
+
+    if (saveDrugBtn) saveDrugBtn.textContent = 'บันทึกการแก้ไขยา';
+    if (cancelDrugEditBtn) cancelDrugEditBtn.classList.remove('hidden');
+    showCustomAlert(`กำลังแก้ไขข้อมูลยา: ${escapeHtml(drug.tradeName || drugId)}`);
+}
+
+function cancelDrugEdit() {
+    resetDrugForm();
 }
 
 async function deleteSelectedDrugs() {
@@ -2120,8 +2266,8 @@ async function saveImageToServer(drugId, base64ImageData) {
 
 addDrugFormEl.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const btn = e.target.querySelector('button');
-    btn.disabled = true;
+    const btn = saveDrugBtn || e.target.querySelector('button');
+    if (btn) btn.disabled = true;
     const payload = {
         drugId: document.getElementById('drugId').value,
         tradeName: document.getElementById('tradeName').value,
@@ -2141,12 +2287,20 @@ addDrugFormEl.addEventListener('submit', async (e) => {
         interaction5: document.getElementById('interaction5').value,
     };
     try {
-        await apiPost('drugs', payload);
-        showCustomAlert('บันทึกข้อมูลยาสำเร็จ!');
-        addDrugFormEl.reset();
-        loadFormulary();
-    } catch (error) { /* Handled by apiPost */ }
-    finally { btn.disabled = false; }
+        const editingId = editingDrugIdInput?.value;
+        if (editingId) {
+            await apiPut(`drugs/${editingId}`, payload);
+            showCustomAlert('อัปเดตข้อมูลยาสำเร็จ!');
+        } else {
+            await apiPost('drugs', payload);
+            showCustomAlert('บันทึกข้อมูลยาสำเร็จ!');
+        }
+        resetDrugForm();
+        await loadFormulary();
+    } catch (error) { /* Handled by apiPost/apiPut */ }
+    finally {
+        if (btn) btn.disabled = false;
+    }
 });
 refreshDrugsBtn.addEventListener('click', loadFormulary);
 if (deleteSelectedDrugsBtn) {
@@ -2159,6 +2313,9 @@ if (clearDrugSelectionBtn) {
         checkboxes.forEach(cb => { cb.checked = false; });
         updateDrugSelectionUI();
     });
+}
+if (cancelDrugEditBtn) {
+    cancelDrugEditBtn.addEventListener('click', cancelDrugEdit);
 }
 
 // --- Inventory Management ---
@@ -2814,61 +2971,119 @@ const reportDateEl = document.getElementById('reportDate');
 const reportWeekEl = document.getElementById('reportWeek');
 const reportMonthEl = document.getElementById('reportMonth');
 const reportYearEl = document.getElementById('reportYear');
+const reportPeriodEl = document.getElementById('reportPeriod');
+const reportReferenceDateEl = document.getElementById('reportReferenceDate');
+const kpiPickerContainer = document.getElementById('kpi-picker-container');
+const reportSummaryEl = document.getElementById('reportSummary');
 const generateReportBtn = document.getElementById('generateReportBtn');
 const reportResultTable = document.getElementById('reportResultTable');
-
+const reportExportBar = document.getElementById('reportExportBar');
+const exportReportCsvBtn = document.getElementById('exportReportCsvBtn');
+const exportReportPdfBtn = document.getElementById('exportReportPdfBtn');
+const KPI_TYPES = ['kpiAll', 'kpiSales', 'kpiInventory', 'kpiThaiFda'];
+let lastReportParams = null;
+let lastKpiData = null;
 
 function loadReports() {
-    // Set default dates
     const today = new Date();
-    reportDateEl.valueAsDate = today;
-    reportWeekEl.valueAsDate = today;
-    reportMonthEl.value = today.toISOString().substring(0, 7);
-    reportYearEl.value = today.getFullYear();
-    
+    if (reportDateEl) reportDateEl.valueAsDate = today;
+    if (reportWeekEl) reportWeekEl.valueAsDate = today;
+    if (reportMonthEl) reportMonthEl.value = today.toISOString().substring(0, 7);
+    if (reportYearEl) reportYearEl.value = today.getFullYear();
+    if (reportReferenceDateEl) reportReferenceDateEl.valueAsDate = today;
+
     updateReportPickers();
     reportResultTable.innerHTML = `<p class="text-center text-slate-500">กรุณาเลือกประเภทรายงานและกด "สร้างรายงาน"</p>`;
-    document.getElementById('reportSummary').innerHTML = '';
+    if (reportSummaryEl) reportSummaryEl.innerHTML = '';
+    updateReportExportButtons(false);
+    lastReportParams = null;
+    lastKpiData = null;
 }
 
 function updateReportPickers() {
     const selectedType = reportTypeEl.value;
+    const isKpiType = KPI_TYPES.includes(selectedType);
     dailyPicker.classList.toggle('hidden', selectedType !== 'dailySales');
     weeklyPicker.classList.toggle('hidden', selectedType !== 'weeklySales');
     monthlyPicker.classList.toggle('hidden', selectedType !== 'monthlySales');
     yearlyPicker.classList.toggle('hidden', selectedType !== 'yearlySales');
-    datePickersContainer.classList.toggle('hidden', ['inventory', 'members'].includes(selectedType));
+    datePickersContainer.classList.toggle('hidden', isKpiType || ['inventory', 'members'].includes(selectedType));
+    if (kpiPickerContainer) {
+        kpiPickerContainer.classList.toggle('hidden', !isKpiType);
+    }
+    if (isKpiType && reportReferenceDateEl && !reportReferenceDateEl.value) {
+        reportReferenceDateEl.valueAsDate = new Date();
+    }
 }
 
-reportTypeEl.addEventListener('change', updateReportPickers);
+function updateReportExportButtons(isVisible) {
+    if (!reportExportBar || !exportReportCsvBtn || !exportReportPdfBtn) return;
+    reportExportBar.classList.toggle('hidden', !isVisible);
+    exportReportCsvBtn.disabled = !isVisible;
+    exportReportPdfBtn.disabled = !isVisible;
+}
+
+reportTypeEl.addEventListener('change', () => {
+    updateReportPickers();
+    updateReportExportButtons(false);
+    if (reportSummaryEl) reportSummaryEl.innerHTML = '';
+    reportResultTable.innerHTML = `<p class="text-center text-slate-500">กรุณาเลือกประเภทรายงานและกด "สร้างรายงาน"</p>`;
+    lastReportParams = null;
+    lastKpiData = null;
+});
 
 generateReportBtn.addEventListener('click', async () => {
     const type = reportTypeEl.value;
+    const isKpiType = KPI_TYPES.includes(type);
+    if (reportSummaryEl) reportSummaryEl.innerHTML = '';
+
+    if (isKpiType) {
+        const period = reportPeriodEl ? reportPeriodEl.value : 'monthly';
+        const referenceDate = reportReferenceDateEl?.value || new Date().toISOString().substring(0, 10);
+        try {
+            const reportData = await apiCall('reports/kpi', { period, referenceDate });
+            lastKpiData = reportData;
+            lastReportParams = { type, period, referenceDate };
+            renderKpiReport(reportData, type);
+            updateReportExportButtons(true);
+        } catch (error) {
+            console.error('KPI report generation error:', error);
+            reportResultTable.innerHTML = `<p class="text-red-500">ไม่สามารถสร้างรายงานได้: ${escapeHtml(error.message)}</p>`;
+            if (reportSummaryEl) reportSummaryEl.innerHTML = '';
+            updateReportExportButtons(false);
+        }
+        return;
+    }
+
+    updateReportExportButtons(false);
     let endpoint = '';
-    let params = {};
     let options = {};
 
     switch(type) {
-        case 'dailySales':
+        case 'dailySales': {
             const reportDate = reportDateEl.value;
             endpoint = `sales/date/${reportDate}`;
             options = { summarize: { column: 'รวม', label: 'ยอดรวม' } };
             break;
-        case 'weeklySales':
+        }
+        case 'weeklySales': {
             const reportWeek = reportWeekEl.value;
             endpoint = `sales/week/${reportWeek}`;
             options = { summarize: { column: 'รวม', label: 'ยอดรวม' } };
             break;
-        case 'monthlySales':
+        }
+        case 'monthlySales': {
             const [year, month] = reportMonthEl.value.split('-');
             endpoint = `sales/month/${year}/${month}`;
             options = { summarize: { column: 'รวม', label: 'ยอดรวม' } };
             break;
-        case 'yearlySales':
+        }
+        case 'yearlySales': {
             const reportYear = reportYearEl.value;
             endpoint = `sales/year/${reportYear}`;
             options = { summarize: { column: 'รวม', label: 'ยอดรวม' } };
             break;
+        }
         case 'inventory':
             endpoint = 'inventory/summary';
             break;
@@ -2881,29 +3096,419 @@ generateReportBtn.addEventListener('click', async () => {
     }
 
     try {
-        const reportData = await apiCall(endpoint, params);
-        // ตรวจสอบว่ามี totalAmount ในผลลัพธ์หรือไม่เพื่อแสดงใน summary
-        if (reportData.totalAmount !== undefined) {
-            const reportSummary = document.getElementById('reportSummary');
-            if (reportSummary) {
-                reportSummary.innerHTML = `<strong>ยอดรวม:</strong> ${Number(reportData.totalAmount).toFixed(2)} บาท`;
-            }
+        const reportData = await apiCall(endpoint, {});
+        if (reportData.totalAmount !== undefined && reportSummaryEl) {
+            reportSummaryEl.innerHTML = `<strong>ยอดรวม:</strong> ${Number(reportData.totalAmount).toFixed(2)} บาท`;
         }
-        // ลบ property ที่ไม่ต้องการแสดงในตาราง
-        const displayData = reportData.filter(item => typeof item === 'object');
+        const displayData = Array.isArray(reportData) ? reportData.filter(item => typeof item === 'object') : [];
         renderTable(reportResultTable, displayData, null, options);
-    } catch(e) {
+        lastReportParams = null;
+        lastKpiData = null;
+    } catch (e) {
         console.error('Report generation error:', e);
-        reportResultTable.innerHTML = `<p class="text-red-500">ไม่สามารถสร้างรายงานได้: ${e.message}</p>`;
-        document.getElementById('reportSummary').innerHTML = '';
+        reportResultTable.innerHTML = `<p class="text-red-500">ไม่สามารถสร้างรายงานได้: ${escapeHtml(e.message)}</p>`;
+        if (reportSummaryEl) reportSummaryEl.innerHTML = '';
     }
 });
+
+function buildKpiMetaSection(meta) {
+    const label = escapeHtml(meta?.label || 'ช่วงเวลาไม่ได้ระบุ');
+    const rangeText = escapeHtml(meta?.displayRange || '-');
+    const generatedAt = meta?.generatedAt ? formatThaiDateDisplay(meta.generatedAt) : '-';
+    return `
+        <section class="bg-gradient-to-r from-emerald-50 to-emerald-100 border border-emerald-200 rounded-xl p-5 shadow-sm">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                <div>
+                    <p class="text-xs uppercase tracking-wide text-emerald-600">สรุปช่วงเวลา</p>
+                    <h3 class="text-lg font-bold text-slate-800 mt-1">${label}</h3>
+                    <p class="text-sm text-slate-600 mt-1">${rangeText}</p>
+                </div>
+                <div class="text-sm text-slate-600">
+                    <p>สร้างรายงาน: <span class="font-medium">${generatedAt}</span></p>
+                </div>
+            </div>
+        </section>
+    `;
+}
+
+function buildSalesSection(sales) {
+    if (!sales) {
+        return `
+            <section class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                <h3 class="text-lg font-bold text-slate-800">งานขาย</h3>
+                <p class="text-sm text-slate-500 mt-2">ไม่มีข้อมูลยอดขายในช่วงเวลาที่เลือก</p>
+            </section>
+        `;
+    }
+
+    const cards = [
+        { label: 'ยอดขายรวม', value: formatCurrencyDisplay(sales.totalRevenue) },
+        { label: 'จำนวนธุรกรรม', value: `${formatNumberDisplay(sales.totalTransactions, 0)} รายการ` },
+        { label: 'ยอดซื้อต่อบิล', value: formatCurrencyDisplay(sales.avgTicket) },
+        { label: 'จำนวนหน่วยที่ขาย', value: `${formatNumberDisplay(sales.totalUnitsSold, 0)} หน่วย` },
+        { label: 'จำนวนสมาชิกที่ซื้อ', value: `${formatNumberDisplay(sales.uniqueCustomers, 0)} คน` }
+    ];
+
+    const topProducts = Array.isArray(sales.topProducts) ? sales.topProducts : [];
+    const topCategories = Array.isArray(sales.topCategories) ? sales.topCategories : [];
+
+    let html = `
+        <section class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                <h3 class="text-lg font-bold text-slate-800">งานขาย</h3>
+                <p class="text-sm text-slate-500">ตัวชี้วัดหลักของงานขายในช่วงเวลานี้</p>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+                ${cards.map(card => `
+                    <div class="p-4 bg-emerald-50 border border-emerald-100 rounded-lg">
+                        <p class="text-xs uppercase tracking-wide text-emerald-600">${card.label}</p>
+                        <p class="mt-2 text-xl font-bold text-slate-800">${card.value}</p>
+                    </div>
+                `).join('')}
+            </div>
+    `;
+
+    html += `
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
+            <div>
+                <h4 class="font-semibold text-slate-700 mb-2">สินค้าขายดี</h4>
+                ${topProducts.length === 0 ? `<p class="text-sm text-slate-500">ไม่มีข้อมูลสินค้าในช่วงนี้</p>` : `
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-slate-500">
+                            <thead class="text-xs uppercase bg-slate-50 text-slate-600">
+                                <tr>
+                                    <th class="px-4 py-2">อันดับ</th>
+                                    <th class="px-4 py-2">รายการ</th>
+                                    <th class="px-4 py-2">จำนวน</th>
+                                    <th class="px-4 py-2">รายได้</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${topProducts.map((item, index) => `
+                                    <tr class="border-b">
+                                        <td class="px-4 py-2">${index + 1}</td>
+                                        <td class="px-4 py-2">
+                                            <div class="font-medium text-slate-700">${escapeHtml(item.tradeName || item.drugId || '-')}</div>
+                                            <div class="text-xs text-slate-500">${escapeHtml(item.genericName || '')}</div>
+                                        </td>
+                                        <td class="px-4 py-2">${formatNumberDisplay(item.quantitySold, 0)}</td>
+                                        <td class="px-4 py-2">${formatCurrencyDisplay(item.revenue)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `}
+            </div>
+            <div>
+                <h4 class="font-semibold text-slate-700 mb-2">หมวดสินค้ายอดนิยม</h4>
+                ${topCategories.length === 0 ? `<p class="text-sm text-slate-500">ไม่มีข้อมูลหมวดสินค้าในช่วงนี้</p>` : `
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-slate-500">
+                            <thead class="text-xs uppercase bg-slate-50 text-slate-600">
+                                <tr>
+                                    <th class="px-4 py-2">หมวดสินค้า</th>
+                                    <th class="px-4 py-2">จำนวน</th>
+                                    <th class="px-4 py-2">รายได้</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${topCategories.map(item => `
+                                    <tr class="border-b">
+                                        <td class="px-4 py-2">${escapeHtml(item.pharmaCategory || '-')}</td>
+                                        <td class="px-4 py-2">${formatNumberDisplay(item.quantitySold, 0)} หน่วย</td>
+                                        <td class="px-4 py-2">${formatCurrencyDisplay(item.revenue)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `}
+            </div>
+        </div>
+        </section>
+    `;
+
+    return html;
+}
+
+function buildInventorySection(inventory) {
+    if (!inventory) {
+        return `
+            <section class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                <h3 class="text-lg font-bold text-slate-800">งานคลัง</h3>
+                <p class="text-sm text-slate-500 mt-2">ไม่มีข้อมูลคลังสินค้าในช่วงเวลาที่เลือก</p>
+            </section>
+        `;
+    }
+
+    const cards = [
+        { label: 'จำนวน SKU', value: `${formatNumberDisplay(inventory.totalSkus, 0)} รายการ` },
+        { label: 'จำนวน Lot ทั้งหมด', value: `${formatNumberDisplay(inventory.totalLots, 0)} Lot` },
+        { label: 'จำนวนหน่วยคงคลัง', value: `${formatNumberDisplay(inventory.totalUnits, 0)} หน่วย` },
+        { label: 'มูลค่าสินค้าคงคลัง', value: formatCurrencyDisplay(inventory.stockValue) }
+    ];
+
+    const belowMin = Array.isArray(inventory.belowMin) ? inventory.belowMin.slice(0, 10) : [];
+    const nearExpiry = Array.isArray(inventory.nearExpiry) ? inventory.nearExpiry.slice(0, 10) : [];
+    const slowMoving = Array.isArray(inventory.slowMoving) ? inventory.slowMoving.slice(0, 10) : [];
+
+    const buildList = (items, formatter) => {
+        if (items.length === 0) {
+            return '<p class="text-sm text-slate-500">ไม่มีข้อมูล</p>';
+        }
+        return `<ul class="text-sm text-slate-600 space-y-1 max-h-48 overflow-y-auto pr-1">${items.map(formatter).join('')}</ul>`;
+    };
+
+    let html = `
+        <section class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                <h3 class="text-lg font-bold text-slate-800">งานคลัง</h3>
+                <p class="text-sm text-slate-500">ภาพรวมสต็อกและความเสี่ยงในคลังสินค้า</p>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                ${cards.map(card => `
+                    <div class="p-4 bg-blue-50 border border-blue-100 rounded-lg">
+                        <p class="text-xs uppercase tracking-wide text-blue-600">${card.label}</p>
+                        <p class="mt-2 text-xl font-bold text-slate-800">${card.value}</p>
+                    </div>
+                `).join('')}
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+                <div class="p-4 border border-slate-200 rounded-lg">
+                    <h4 class="font-semibold text-slate-700 mb-2">ต่ำกว่า Min Stock</h4>
+                    ${buildList(belowMin, item => `
+                        <li>
+                            <div class="font-medium text-slate-700">${escapeHtml(item.tradeName || item.drugId || '-')}</div>
+                            <div class="text-xs text-slate-500">คงเหลือ ${formatNumberDisplay(item.quantity, 0)} / ขั้นต่ำ ${formatNumberDisplay(item.minStock, 0)}</div>
+                        </li>
+                    `)}
+                </div>
+                <div class="p-4 border border-slate-200 rounded-lg">
+                    <h4 class="font-semibold text-slate-700 mb-2">ใกล้หมดอายุ</h4>
+                    ${buildList(nearExpiry, item => {
+                        const expiry = item.expiryDate ? formatThaiDateDisplay(item.expiryDate) : '-';
+                        return `
+                            <li>
+                                <div class="font-medium text-slate-700">${escapeHtml(item.tradeName || item.drugId || '-')} (Lot ${escapeHtml(item.lotNumber || '-')})</div>
+                                <div class="text-xs text-slate-500">หมดอายุ ${expiry} | คงเหลือ ${formatNumberDisplay(item.quantity, 0)} หน่วย</div>
+                            </li>
+                        `;
+                    })}
+                </div>
+                <div class="p-4 border border-slate-200 rounded-lg">
+                    <h4 class="font-semibold text-slate-700 mb-2">สินค้าขายช้า</h4>
+                    ${buildList(slowMoving, item => {
+                        const lastSale = item.lastSaleDate ? formatThaiDateDisplay(item.lastSaleDate) : 'ยังไม่เคยขาย';
+                        return `
+                            <li>
+                                <div class="font-medium text-slate-700">${escapeHtml(item.tradeName || item.drugId || '-')}</div>
+                                <div class="text-xs text-slate-500">คงเหลือ ${formatNumberDisplay(item.quantity, 0)} หน่วย | ขายล่าสุด ${lastSale}</div>
+                            </li>
+                        `;
+                    })}
+                </div>
+            </div>
+        </section>
+    `;
+
+    return html;
+}
+
+function buildThaiFdaSection(thaiFda) {
+    if (!thaiFda) {
+        return `
+            <section class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                <h3 class="text-lg font-bold text-slate-800">รายงานสำหรับ อย.</h3>
+                <p class="text-sm text-slate-500 mt-2">ไม่มีรายการยาที่ต้องรายงาน</p>
+            </section>
+        `;
+    }
+
+    const summaryRows = Array.isArray(thaiFda.summary) ? thaiFda.summary : [];
+    const transactions = Array.isArray(thaiFda.transactions) ? thaiFda.transactions.slice(0, 20) : [];
+
+    let html = `
+        <section class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                <h3 class="text-lg font-bold text-slate-800">รายงานสำหรับ อย.</h3>
+                <p class="text-sm text-slate-500">ตรวจสอบการจำหน่ายยาอันตรายและยาควบคุมพิเศษ</p>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                <div class="p-4 bg-amber-50 border border-amber-100 rounded-lg">
+                    <p class="text-xs uppercase tracking-wide text-amber-600">จำนวนรายการยาอันตราย</p>
+                    <p class="mt-2 text-xl font-bold text-slate-800">${formatNumberDisplay(thaiFda.totalDangerous, 0)} รายการ</p>
+                </div>
+                <div class="p-4 bg-amber-50 border border-amber-100 rounded-lg">
+                    <p class="text-xs uppercase tracking-wide text-amber-600">จำนวนรายการยาควบคุม</p>
+                    <p class="mt-2 text-xl font-bold text-slate-800">${formatNumberDisplay(thaiFda.totalControlled, 0)} รายการ</p>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                ${summaryRows.length === 0 ? `<p class="text-sm text-slate-500">ไม่มีหมวดหมู่ที่ต้องรายงาน</p>` : `
+                    <table class="w-full text-sm text-left text-slate-500">
+                        <thead class="text-xs uppercase bg-slate-50 text-slate-600">
+                            <tr>
+                                <th class="px-4 py-2">หมวดหมู่ตามกฎหมาย</th>
+                                <th class="px-4 py-2">จำนวนธุรกรรม</th>
+                                <th class="px-4 py-2">ปริมาณที่จำหน่าย</th>
+                                <th class="px-4 py-2">มูลค่ารวม</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${summaryRows.map(item => `
+                                <tr class="border-b">
+                                    <td class="px-4 py-2">${escapeHtml(item.category || '-')}</td>
+                                    <td class="px-4 py-2">${formatNumberDisplay(item.transactions, 0)} ครั้ง</td>
+                                    <td class="px-4 py-2">${formatNumberDisplay(item.quantity, 0)} หน่วย</td>
+                                    <td class="px-4 py-2">${formatCurrencyDisplay(item.revenue)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `}
+            </div>
+            <div class="mt-6">
+                <h4 class="font-semibold text-slate-700 mb-2">รายการจำหน่ายที่ต้องติดตาม (สูงสุด 20 รายการล่าสุด)</h4>
+                ${transactions.length === 0 ? `<p class="text-sm text-slate-500">ไม่มีรายการจำหน่ายในช่วงเวลานี้</p>` : `
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-slate-500">
+                            <thead class="text-xs uppercase bg-slate-50 text-slate-600">
+                                <tr>
+                                    <th class="px-4 py-2">วันที่</th>
+                                    <th class="px-4 py-2">รายการยา</th>
+                                    <th class="px-4 py-2">ประเภท</th>
+                                    <th class="px-4 py-2">จำนวน</th>
+                                    <th class="px-4 py-2">มูลค่า</th>
+                                    <th class="px-4 py-2">เภสัชกร</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${transactions.map(item => `
+                                    <tr class="border-b">
+                                        <td class="px-4 py-2">${formatThaiDateDisplay(item.saleDate)}</td>
+                                        <td class="px-4 py-2">${escapeHtml(item.tradeName || '-')}</td>
+                                        <td class="px-4 py-2">${escapeHtml(item.legalCategory || '-')}</td>
+                                        <td class="px-4 py-2">${formatNumberDisplay(item.quantitySold, 0)} หน่วย</td>
+                                        <td class="px-4 py-2">${formatCurrencyDisplay(item.lineTotal)}</td>
+                                        <td class="px-4 py-2">${escapeHtml(item.pharmacist || '-')}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `}
+            </div>
+        </section>
+    `;
+
+    return html;
+}
+
+function renderKpiReport(report, type) {
+    if (!report || typeof report !== 'object') {
+        reportResultTable.innerHTML = `<p class="text-red-500">ไม่พบข้อมูลรายงาน</p>`;
+        if (reportSummaryEl) reportSummaryEl.innerHTML = '';
+        return;
+    }
+
+    const sectionsMap = {
+        kpiAll: ['sales', 'inventory', 'thaiFda'],
+        kpiSales: ['sales'],
+        kpiInventory: ['inventory'],
+        kpiThaiFda: ['thaiFda']
+    };
+    const sections = sectionsMap[type] || sectionsMap.kpiAll;
+    const meta = report.meta || {};
+
+    if (reportSummaryEl) {
+        const summaryParts = [];
+        if (meta.label) summaryParts.push(escapeHtml(meta.label));
+        if (meta.displayRange) summaryParts.push(escapeHtml(meta.displayRange));
+        reportSummaryEl.innerHTML = summaryParts.join(' | ');
+    }
+
+    let html = `<div class="space-y-6">`;
+    html += buildKpiMetaSection(meta);
+    if (sections.includes('sales')) {
+        html += buildSalesSection(report.sales);
+    }
+    if (sections.includes('inventory')) {
+        html += buildInventorySection(report.inventory);
+    }
+    if (sections.includes('thaiFda')) {
+        html += buildThaiFdaSection(report.thaiFda);
+    }
+    html += '</div>';
+
+    reportResultTable.innerHTML = html;
+}
+
+if (exportReportCsvBtn) {
+    exportReportCsvBtn.addEventListener('click', () => {
+        if (!lastReportParams || !KPI_TYPES.includes(lastReportParams.type)) {
+            showCustomAlert('กรุณาสร้างรายงาน KPI ก่อนดาวน์โหลด');
+            return;
+        }
+        const exportTypeMap = {
+            kpiAll: 'kpi',
+            kpiSales: 'kpi-sales',
+            kpiInventory: 'kpi-inventory',
+            kpiThaiFda: 'kpi-thai-fda'
+        };
+        const exportType = exportTypeMap[lastReportParams.type] || 'kpi';
+        const periodParam = encodeURIComponent(lastReportParams.period || 'monthly');
+        const referenceParam = lastReportParams.referenceDate ? `&referenceDate=${encodeURIComponent(lastReportParams.referenceDate)}` : '';
+        const endpoint = `/api/export/${exportType}?period=${periodParam}${referenceParam}`;
+        downloadFile(endpoint, exportType, { extension: 'csv', includeDate: true });
+    });
+}
+
+if (exportReportPdfBtn) {
+    exportReportPdfBtn.addEventListener('click', async () => {
+        if (!lastReportParams || !KPI_TYPES.includes(lastReportParams.type)) {
+            showCustomAlert('กรุณาสร้างรายงาน KPI ก่อนบันทึก PDF');
+            return;
+        }
+        if (!window.html2canvas || !window.jspdf) {
+            showCustomAlert('เบราว์เซอร์ไม่รองรับการสร้าง PDF อัตโนมัติ');
+            return;
+        }
+        const container = reportResultTable;
+        if (!container) {
+            showCustomAlert('ไม่พบข้อมูลรายงานสำหรับสร้าง PDF');
+            return;
+        }
+        exportReportPdfBtn.disabled = true;
+        try {
+            const canvas = await window.html2canvas(container, { scale: 2, backgroundColor: '#ffffff' });
+            const imgData = canvas.toDataURL('image/png');
+            const pageWidth = 595.28; // A4 width in pt
+            const margin = 36;
+            const renderWidth = pageWidth - margin * 2;
+            const renderHeight = canvas.height * (renderWidth / canvas.width);
+            const pdf = new window.jspdf.jsPDF({ orientation: 'p', unit: 'pt', format: [pageWidth, renderHeight + margin * 2] });
+            pdf.addImage(imgData, 'PNG', margin, margin, renderWidth, renderHeight);
+            const safePeriod = (lastReportParams.period || 'period').replace(/[^a-zA-Z0-9_-]+/g, '_');
+            const safeDate = (lastReportParams.referenceDate || 'today').replace(/[^a-zA-Z0-9_-]+/g, '_');
+            const filename = `pms_${lastReportParams.type}_${safePeriod}_${safeDate}.pdf`;
+            pdf.save(filename);
+        } catch (error) {
+            console.error('PDF export error:', error);
+            showCustomAlert(`เกิดข้อผิดพลาดในการสร้าง PDF: ${error.message}`);
+        } finally {
+            exportReportPdfBtn.disabled = false;
+        }
+    });
+}
 
 // --- Settings ---
 const settingsScriptUrlEl = document.getElementById('settingsScriptUrl');
 const settingsSaveBtn = document.getElementById('settingsSaveBtn');
 const settingsStatusMsg = document.getElementById('settingsStatusMsg');
 const downloadBackupBtn = document.getElementById('downloadBackupBtn');
+const buildInfoPanel = document.getElementById('buildInfoPanel');
+const refreshBuildInfoBtn = document.getElementById('refreshBuildInfoBtn');
 
 function loadSettings() {
     const storedUrl = localStorage.getItem('pharmacyAppApiUrl');
@@ -2917,6 +3522,76 @@ function loadSettings() {
     }
 }
 
+async function refreshBuildInfo() {
+    if (!buildInfoPanel) {
+        return;
+    }
+
+    if (!API_URL) {
+        buildInfoPanel.innerHTML = '<p class="text-red-500">กรุณาตั้งค่า API URL ก่อน</p>';
+        return;
+    }
+
+    if (refreshBuildInfoBtn) {
+        refreshBuildInfoBtn.disabled = true;
+    }
+    buildInfoPanel.innerHTML = '<p class="text-slate-500">กำลังโหลดข้อมูลเวอร์ชัน...</p>';
+
+    try {
+        const token = localStorage.getItem('authToken');
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+        const response = await fetch(`${API_URL}/build-info`, { headers });
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const info = await response.json();
+
+        const branch = info.branch || 'ไม่ระบุ';
+        const commitFull = info.commit || 'ไม่ระบุ';
+        const commitShort = commitFull.length > 12 ? `${commitFull.slice(0, 7)}…` : commitFull;
+        const apiVersion = info.apiVersion || 'ไม่ระบุ';
+        const environment = info.environment || 'development';
+        const indexUpdatedAt = info.indexUpdatedAt ? formatThaiDateTimeDisplay(info.indexUpdatedAt) : 'ไม่ทราบ';
+        const serverUpdatedAt = info.serverUpdatedAt ? formatThaiDateTimeDisplay(info.serverUpdatedAt) : 'ไม่ทราบ';
+        const fetchedAt = formatThaiDateTimeDisplay(new Date());
+        const sanitizedApiUrl = (API_URL || '').replace(/\/$/, '');
+
+        const rows = [
+            { label: 'สภาพแวดล้อม', value: environment },
+            { label: 'เวอร์ชัน API', value: apiVersion },
+            { label: 'Branch', value: branch },
+            { label: 'Commit', value: commitShort, tooltip: commitFull },
+            { label: 'อัปเดตหน้าเว็บล่าสุด', value: indexUpdatedAt },
+            { label: 'อัปเดตเซิร์ฟเวอร์ล่าสุด', value: serverUpdatedAt }
+        ];
+
+        const htmlRows = rows.map(row => {
+            const tooltip = row.tooltip || row.value;
+            return `
+                <div class="flex items-start justify-between gap-3">
+                    <span class="text-slate-500">${escapeHtml(row.label)}</span>
+                    <span class="font-medium text-slate-700 text-right" title="${escapeHtml(tooltip)}">${escapeHtml(row.value)}</span>
+                </div>
+            `;
+        }).join('');
+
+        buildInfoPanel.innerHTML = `
+            <div class="space-y-2">
+                ${htmlRows}
+                <p class="text-xs text-slate-400">API: ${escapeHtml(sanitizedApiUrl)}</p>
+                <p class="text-xs text-slate-400">เรียกข้อมูลล่าสุด: ${escapeHtml(fetchedAt)}</p>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Build info load error:', error);
+        buildInfoPanel.innerHTML = `<p class="text-red-500">ไม่สามารถโหลดข้อมูลเวอร์ชันได้: ${escapeHtml(error.message)}</p>`;
+    } finally {
+        if (refreshBuildInfoBtn) {
+            refreshBuildInfoBtn.disabled = false;
+        }
+    }
+}
+
 settingsSaveBtn.addEventListener('click', () => {
     const newUrl = settingsScriptUrlEl.value.trim();
     if (newUrl && newUrl.startsWith('http')) {
@@ -2925,10 +3600,18 @@ settingsSaveBtn.addEventListener('click', () => {
         settingsStatusMsg.textContent = 'บันทึก URL สำเร็จ!';
         setTimeout(() => { settingsStatusMsg.textContent = ''; }, 3000);
         showCustomAlert('บันทึกการตั้งค่า URL สำเร็จแล้ว');
+        refreshBuildInfo();
     } else {
         showCustomAlert('กรุณาใส่ URL ของ API Server ให้ถูกต้อง');
     }
 });
+
+if (refreshBuildInfoBtn) {
+    refreshBuildInfoBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        refreshBuildInfo();
+    });
+}
 
 // --- Barcode Scanner ---
 function openBarcodeScanner(callback) {
