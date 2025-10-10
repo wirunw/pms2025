@@ -338,7 +338,7 @@ async function buildKpiReport(period = 'monthly', referenceDate = null) {
   }
 
   const { start, end } = range;
-  const [salesRows, inventoryRows, lastSalesRows] = await Promise.all([
+  const [salesRows, inventoryRows, lastSalesRows, staffRowsRaw] = await Promise.all([
     runQuery(
       `SELECT s.saleId, s.saleDate, s.memberId, s.pharmacistId, s.pharmacist, s.totalAmount,
               s.quantitySold, s.pricePerUnit, s.drugId, s.lotNumber,
@@ -361,8 +361,17 @@ async function buildKpiReport(period = 'monthly', referenceDate = null) {
       `SELECT drugId, MAX(saleDate) as lastSaleDate
        FROM Sales
        GROUP BY drugId`
-    )
+    ),
+    runQuery(`SELECT staffId, fullName, licenseNumber, position FROM Staff`)
   ]);
+  const staffRows = Array.isArray(staffRowsRaw) ? staffRowsRaw : [];
+
+  const staffMap = new Map();
+  staffRows.forEach((row) => {
+    if (row && row.staffId) {
+      staffMap.set(row.staffId, row);
+    }
+  });
 
   const saleTotalsById = new Map();
   const uniqueCustomers = new Set();
@@ -370,6 +379,13 @@ async function buildKpiReport(period = 'monthly', referenceDate = null) {
   const categoryMap = new Map();
   const legalSummaryMap = new Map();
   const thaiFdaTransactions = [];
+  const pharmacistMap = new Map();
+  const salePharmacistSet = new Set();
+  const documentedSaleIds = new Set();
+  const unassignedSaleIds = new Set();
+
+  let documentedTransactions = 0;
+  let unassignedTransactions = 0;
 
   let totalRevenue = 0;
   let totalUnitsSold = 0;
@@ -381,8 +397,14 @@ async function buildKpiReport(period = 'monthly', referenceDate = null) {
     totalRevenue += lineTotal;
     totalUnitsSold += Number(row.quantitySold) || 0;
 
-    if (row.memberId && row.memberId !== 'N/A') {
+    const hasMember = row.memberId && row.memberId !== 'N/A';
+
+    if (hasMember) {
       uniqueCustomers.add(row.memberId);
+      if (!documentedSaleIds.has(row.saleId)) {
+        documentedSaleIds.add(row.saleId);
+        documentedTransactions += 1;
+      }
     }
 
     if (!saleTotalsById.has(row.saleId)) {
@@ -434,11 +456,64 @@ async function buildKpiReport(period = 'monthly', referenceDate = null) {
     const isDangerous = normalizedLegal.includes('ยาอันตราย');
     const isControlled = CONTROLLED_KEYWORDS.some((keyword) => normalizedLegal.includes(keyword));
 
+    const hasAssignedPharmacist = Boolean(row.pharmacistId || row.pharmacist);
+    if (!hasAssignedPharmacist) {
+      if (!unassignedSaleIds.has(row.saleId)) {
+        unassignedSaleIds.add(row.saleId);
+        unassignedTransactions += 1;
+      }
+    }
+
+    const pharmacistKey = hasAssignedPharmacist ? (row.pharmacistId || row.pharmacist) : '__UNASSIGNED__';
+    if (!pharmacistMap.has(pharmacistKey)) {
+      const staffRecord = hasAssignedPharmacist && row.pharmacistId ? staffMap.get(row.pharmacistId) : null;
+      pharmacistMap.set(pharmacistKey, {
+        pharmacistId: row.pharmacistId || null,
+        pharmacist:
+          row.pharmacist || staffRecord?.fullName || (hasAssignedPharmacist ? row.pharmacistId : 'ไม่ระบุผู้ขาย'),
+        licenseNumber: staffRecord?.licenseNumber || null,
+        position: staffRecord?.position || null,
+        hasAssignment: hasAssignedPharmacist,
+        transactions: 0,
+        revenue: 0,
+        units: 0,
+        documentedSales: 0,
+        documentedSaleIds: new Set(),
+        uniqueMembers: new Set(),
+        dangerousTransactions: 0,
+        controlledTransactions: 0,
+        lastSaleDate: null
+      });
+    }
+
+    const pharmacistEntry = pharmacistMap.get(pharmacistKey);
+    pharmacistEntry.revenue += lineTotal;
+    pharmacistEntry.units += Number(row.quantitySold) || 0;
+    if (hasMember) {
+      pharmacistEntry.uniqueMembers.add(row.memberId);
+      if (!pharmacistEntry.documentedSaleIds.has(row.saleId)) {
+        pharmacistEntry.documentedSaleIds.add(row.saleId);
+        pharmacistEntry.documentedSales += 1;
+      }
+    }
+
+    const salePharmacistKey = `${row.saleId}::${pharmacistKey}`;
+    if (!salePharmacistSet.has(salePharmacistKey)) {
+      salePharmacistSet.add(salePharmacistKey);
+      pharmacistEntry.transactions += 1;
+    }
+
+    if (!pharmacistEntry.lastSaleDate || new Date(row.saleDate) > new Date(pharmacistEntry.lastSaleDate || 0)) {
+      pharmacistEntry.lastSaleDate = row.saleDate;
+    }
+
     if (isDangerous) {
       dangerousCount += 1;
+      pharmacistEntry.dangerousTransactions += 1;
     }
     if (isControlled) {
       controlledCount += 1;
+      pharmacistEntry.controlledTransactions += 1;
     }
 
     if (isDangerous || isControlled) {
@@ -565,6 +640,106 @@ async function buildKpiReport(period = 'monthly', referenceDate = null) {
       return dateA - dateB;
     });
 
+  const byPharmacist = Array.from(pharmacistMap.values()).map((entry) => {
+    const transactions = Number(entry.transactions) || 0;
+    const revenue = Number(entry.revenue) || 0;
+    const documentedSales = Number(entry.documentedSales) || 0;
+    const uniqueMembersCount = entry.uniqueMembers instanceof Set ? entry.uniqueMembers.size : Number(entry.uniqueMembers) || 0;
+    return {
+      pharmacistId: entry.pharmacistId,
+      pharmacist: entry.pharmacist,
+      licenseNumber: entry.licenseNumber,
+      position: entry.position,
+      hasAssignment: entry.hasAssignment,
+      transactions,
+      revenue,
+      avgTicket: transactions > 0 ? revenue / transactions : 0,
+      units: Number(entry.units) || 0,
+      documentedSales,
+      documentedRate: transactions > 0 ? documentedSales / transactions : 0,
+      uniqueMembers: uniqueMembersCount,
+      dangerousTransactions: Number(entry.dangerousTransactions) || 0,
+      controlledTransactions: Number(entry.controlledTransactions) || 0,
+      lastSaleDate: entry.lastSaleDate || null
+    };
+  });
+
+  const activePharmacists = byPharmacist.filter((item) => item.hasAssignment && item.transactions > 0);
+  const totalActivePharmacists = activePharmacists.length;
+  const averageRevenuePerPharmacist = totalActivePharmacists > 0 ? totalRevenue / totalActivePharmacists : 0;
+  const averageTransactionsPerPharmacist = totalActivePharmacists > 0 ? totalTransactions / totalActivePharmacists : 0;
+  const averageUnitsPerPharmacist = totalActivePharmacists > 0 ? totalUnitsSold / totalActivePharmacists : 0;
+  const memberDocumentedRate = totalTransactions > 0 ? documentedTransactions / totalTransactions : 0;
+  const totalControlledDispenses = byPharmacist.reduce(
+    (sum, item) => sum + Number(item.dangerousTransactions || 0) + Number(item.controlledTransactions || 0),
+    0
+  );
+  const totalStaff = staffMap.size;
+  const staffCoverageRate = totalStaff > 0 ? totalActivePharmacists / totalStaff : 0;
+
+  const inactiveStaff = staffRows
+    .filter((staff) => !activePharmacists.some((item) => item.pharmacistId && item.pharmacistId === staff.staffId))
+    .map((staff) => ({
+      staffId: staff.staffId,
+      fullName: staff.fullName,
+      position: staff.position || null,
+      licenseNumber: staff.licenseNumber || null
+    }));
+
+  const sortedPharmacists = byPharmacist
+    .slice()
+    .sort((a, b) => {
+      if (a.hasAssignment !== b.hasAssignment) {
+        return a.hasAssignment ? -1 : 1;
+      }
+      return (b.revenue || 0) - (a.revenue || 0);
+    });
+
+  const topPharmacists = activePharmacists
+    .slice()
+    .sort((a, b) => (b.revenue || 0) - (a.revenue || 0))
+    .slice(0, 5);
+
+  const complianceAlerts = [];
+  if (unassignedTransactions > 0) {
+    complianceAlerts.push(
+      `พบ ${unassignedTransactions} ธุรกรรมที่ไม่ระบุผู้ขาย โปรดตรวจสอบขั้นตอนเลือกเจ้าหน้าที่ก่อนบันทึกการขาย`
+    );
+  }
+
+  const noLicensePharmacists = activePharmacists.filter(
+    (item) => !item.licenseNumber || String(item.licenseNumber).trim() === ''
+  );
+  if (noLicensePharmacists.length > 0) {
+    const names = noLicensePharmacists
+      .slice(0, 3)
+      .map((item) => item.pharmacist || item.pharmacistId || 'ไม่ระบุ');
+    complianceAlerts.push(
+      `ยังไม่ได้บันทึกเลขที่ใบอนุญาตของ ${names.join(', ')}${
+        noLicensePharmacists.length > 3 ? ' และอื่น ๆ' : ''
+      }`
+    );
+  }
+
+  const controlledWithLowDocumentation = activePharmacists.filter((item) => {
+    const controlCount = Number(item.dangerousTransactions || 0) + Number(item.controlledTransactions || 0);
+    return controlCount > 0 && (item.documentedRate || 0) < 0.5;
+  });
+  if (controlledWithLowDocumentation.length > 0) {
+    const names = controlledWithLowDocumentation
+      .slice(0, 3)
+      .map((item) => item.pharmacist || item.pharmacistId || 'ไม่ระบุ');
+    complianceAlerts.push(
+      `กรุณาตรวจสอบการบันทึกข้อมูลสมาชิกสำหรับการจ่ายยาควบคุม/อันตรายของ ${names.join(', ')}${
+        controlledWithLowDocumentation.length > 3 ? ' และอื่น ๆ' : ''
+      }`
+    );
+  }
+
+  if (memberDocumentedRate < 0.6 && totalTransactions > 0) {
+    complianceAlerts.push('สัดส่วนการบันทึกข้อมูลสมาชิกต่ำกว่า 60% ในช่วงเวลานี้');
+  }
+
   return {
     meta: {
       period,
@@ -592,6 +767,25 @@ async function buildKpiReport(period = 'monthly', referenceDate = null) {
       belowMin,
       nearExpiry,
       slowMoving
+    },
+    pharmacistOps: {
+      totalActive: totalActivePharmacists,
+      totalStaff,
+      staffCoverageRate,
+      totalTransactions,
+      totalRevenue,
+      totalUnitsSold,
+      documentedTransactions,
+      memberDocumentedRate,
+      averageRevenuePerPharmacist,
+      averageTransactionsPerPharmacist,
+      averageUnitsPerPharmacist,
+      unassignedTransactions,
+      totalControlledDispenses,
+      topPharmacists,
+      byPharmacist: sortedPharmacists,
+      inactiveStaff,
+      complianceAlerts
     },
     thaiFda: {
       summary: Array.from(legalSummaryMap.values()),
@@ -625,7 +819,7 @@ function stringifyCsvRows(rows) {
     .join('\n');
 }
 
-function buildKpiCsvRows(report, sections = ['sales', 'inventory', 'thaiFda']) {
+function buildKpiCsvRows(report, sections = ['sales', 'inventory', 'thaiFda', 'pharmacistOps']) {
   if (!report || typeof report !== 'object') {
     return [];
   }
@@ -725,6 +919,125 @@ function buildKpiCsvRows(report, sections = ['sales', 'inventory', 'thaiFda']) {
           '',
           `คงเหลือ ${formatNumber(item.quantity, 0)} หน่วย`,
           lastSaleDate ? `ขายล่าสุด ${formatThaiDate(lastSaleDate)}` : 'ยังไม่เคยขาย',
+          ''
+        ]);
+      });
+    }
+  }
+
+  if (sections.includes('pharmacistOps') && report.pharmacistOps) {
+    const ops = report.pharmacistOps;
+    rows.push(['งานเภสัชกร', 'จำนวนเภสัชกรที่มีธุรกรรม', formatNumber(ops.totalActive, 0), '', '', '']);
+    rows.push([
+      'งานเภสัชกร',
+      'อัตราครอบคลุมเจ้าหน้าที่',
+      `${formatNumber((ops.staffCoverageRate || 0) * 100, 1)}%`,
+      `(${formatNumber(ops.totalActive, 0)}/${formatNumber(ops.totalStaff || 0, 0)} คน)`,
+      '',
+      ''
+    ]);
+    rows.push([
+      'งานเภสัชกร',
+      'ธุรกรรมเฉลี่ยต่อเภสัชกร',
+      formatNumber(ops.averageTransactionsPerPharmacist || 0, 2),
+      'บิล/คน',
+      '',
+      ''
+    ]);
+    rows.push([
+      'งานเภสัชกร',
+      'ยอดขายเฉลี่ยต่อเภสัชกร (บาท)',
+      formatNumber(ops.averageRevenuePerPharmacist || 0),
+      '',
+      '',
+      ''
+    ]);
+    rows.push([
+      'งานเภสัชกร',
+      'หน่วยสินค้าที่จ่ายเฉลี่ย',
+      formatNumber(ops.averageUnitsPerPharmacist || 0, 2),
+      'หน่วย/คน',
+      '',
+      ''
+    ]);
+    rows.push([
+      'งานเภสัชกร',
+      'สัดส่วนบันทึกข้อมูลสมาชิก',
+      `${formatNumber((ops.memberDocumentedRate || 0) * 100, 1)}%`,
+      `บันทึก ${formatNumber(ops.documentedTransactions || 0, 0)} บิล`,
+      '',
+      ''
+    ]);
+    rows.push([
+      'งานเภสัชกร',
+      'ธุรกรรมที่ไม่ระบุผู้ขาย',
+      formatNumber(ops.unassignedTransactions || 0, 0),
+      'บิล',
+      '',
+      ''
+    ]);
+    rows.push([
+      'งานเภสัชกร',
+      'รายการควบคุม/อันตรายที่จ่าย',
+      formatNumber(ops.totalControlledDispenses || 0, 0),
+      'รายการ',
+      '',
+      ''
+    ]);
+
+    if (Array.isArray(ops.complianceAlerts) && ops.complianceAlerts.length > 0) {
+      ops.complianceAlerts.forEach((alert, index) => {
+        rows.push(['งานเภสัชกร-ประเด็น', `หมายเหตุ ${index + 1}`, alert, '', '', '']);
+      });
+    }
+
+    if (Array.isArray(ops.topPharmacists) && ops.topPharmacists.length > 0) {
+      ops.topPharmacists.forEach((item, index) => {
+        const controlCount = Number(item.dangerousTransactions || 0) + Number(item.controlledTransactions || 0);
+        rows.push([
+          'งานเภสัชกร-ผลงานเด่น',
+          `อันดับ ${index + 1}`,
+          item.pharmacist || item.pharmacistId || '-',
+          `ยอดขาย ${formatNumber(item.revenue || 0)} บาท`,
+          `จำนวนบิล ${formatNumber(item.transactions || 0, 0)}`,
+          `ควบคุม/อันตราย ${formatNumber(controlCount, 0)} รายการ`
+        ]);
+      });
+    }
+
+    if (Array.isArray(ops.byPharmacist) && ops.byPharmacist.length > 0) {
+      ops.byPharmacist.forEach((item) => {
+        const controlCount = Number(item.dangerousTransactions || 0) + Number(item.controlledTransactions || 0);
+        if (!item.hasAssignment) {
+          rows.push([
+            'งานเภสัชกร-ไม่ระบุผู้ขาย',
+            item.pharmacist || 'ไม่ระบุ',
+            `ยอดขาย ${formatNumber(item.revenue || 0)} บาท`,
+            `จำนวนบิล ${formatNumber(item.transactions || 0, 0)}`,
+            '',
+            ''
+          ]);
+        } else {
+          rows.push([
+            'งานเภสัชกร-สรุปรายบุคคล',
+            item.pharmacist || item.pharmacistId || '-',
+            item.licenseNumber ? `ใบอนุญาต ${item.licenseNumber}` : '-',
+            `ยอดขาย ${formatNumber(item.revenue || 0)} บาท`,
+            `บิล ${formatNumber(item.transactions || 0, 0)} | สมาชิก ${formatNumber(item.uniqueMembers || 0, 0)}`,
+            `ควบคุม ${formatNumber(controlCount, 0)} | อัตราบันทึก ${formatNumber((item.documentedRate || 0) * 100, 1)}%`
+          ]);
+        }
+      });
+    }
+
+    if (Array.isArray(ops.inactiveStaff) && ops.inactiveStaff.length > 0) {
+      ops.inactiveStaff.forEach((staff) => {
+        rows.push([
+          'งานเภสัชกร-เจ้าหน้าที่รอติดตาม',
+          staff.fullName || staff.staffId || '-',
+          staff.position || '',
+          staff.licenseNumber ? `ใบอนุญาต ${staff.licenseNumber}` : '',
+          '',
           ''
         ]);
       });
@@ -2215,7 +2528,7 @@ app.get('/api/export/:reportType', authenticateToken, async (req, res) => {
       case 'kpi-all':
       case 'kpi_all':
         kpiReport = await buildKpiReport(periodQuery, referenceDate);
-        reportSections = ['sales', 'inventory', 'thaiFda'];
+        reportSections = ['sales', 'inventory', 'thaiFda', 'pharmacistOps'];
         csvContent = stringifyCsvRows(buildKpiCsvRows(kpiReport, reportSections));
         filenameBase = 'kpi_full_report';
         exportLabel = `รายงาน KPI ครบมิติ (${kpiReport.meta?.label || periodQuery})`;
@@ -2239,6 +2552,16 @@ app.get('/api/export/:reportType', authenticateToken, async (req, res) => {
         csvContent = stringifyCsvRows(buildKpiCsvRows(kpiReport, reportSections));
         filenameBase = 'kpi_inventory_report';
         exportLabel = `รายงาน KPI งานคลัง (${kpiReport.meta?.label || periodQuery})`;
+        isCustomCsv = true;
+        break;
+
+      case 'kpi-pharmacist':
+      case 'kpi_pharmacist':
+        kpiReport = await buildKpiReport(periodQuery, referenceDate);
+        reportSections = ['pharmacistOps'];
+        csvContent = stringifyCsvRows(buildKpiCsvRows(kpiReport, reportSections));
+        filenameBase = 'kpi_pharmacist_report';
+        exportLabel = `รายงานงานปฏิบัติการเภสัชกร (${kpiReport.meta?.label || periodQuery})`;
         isCustomCsv = true;
         break;
 

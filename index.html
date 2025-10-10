@@ -786,6 +786,7 @@
                             <option value="kpiSales">KPI งานขาย</option>
                             <option value="kpiInventory">KPI งานคลัง</option>
                             <option value="kpiThaiFda">รายงานสำหรับ อย.</option>
+                            <option value="kpiPharmacist">งานปฏิบัติการเภสัชกร</option>
                             <optgroup label="รายงานยอดขาย (เดิม)">
                                 <option value="dailySales">ยอดขายรายวัน</option>
                                 <option value="weeklySales">ยอดขายรายสัปดาห์</option>
@@ -1198,6 +1199,14 @@ function formatNumberDisplay(value, fractionDigits = 0) {
 
 function formatCurrencyDisplay(value) {
     return `${formatNumberDisplay(value, 2)} บาท`;
+}
+
+function formatPercentDisplay(value, fractionDigits = 1) {
+    const num = Number(value || 0) * 100;
+    return `${num.toLocaleString('th-TH', {
+        minimumFractionDigits: fractionDigits,
+        maximumFractionDigits: fractionDigits
+    })}%`;
 }
 
 function formatThaiDateDisplay(dateInput) {
@@ -3222,7 +3231,7 @@ const reportResultTable = document.getElementById('reportResultTable');
 const reportExportBar = document.getElementById('reportExportBar');
 const exportReportCsvBtn = document.getElementById('exportReportCsvBtn');
 const exportReportPdfBtn = document.getElementById('exportReportPdfBtn');
-const KPI_TYPES = ['kpiAll', 'kpiSales', 'kpiInventory', 'kpiThaiFda'];
+const KPI_TYPES = ['kpiAll', 'kpiSales', 'kpiInventory', 'kpiThaiFda', 'kpiPharmacist'];
 let lastReportParams = null;
 let lastKpiData = null;
 
@@ -3375,6 +3384,206 @@ function buildKpiMetaSection(meta) {
             </div>
         </section>
     `;
+}
+
+function buildPharmacistOpsSection(pharmacistOps, meta = {}) {
+    if (!pharmacistOps) {
+        return `
+            <section class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                <h3 class="text-lg font-bold text-slate-800">งานปฏิบัติการเภสัชกร</h3>
+                <p class="text-sm text-slate-500 mt-2">ไม่มีข้อมูลการปฏิบัติงานในช่วงเวลาที่เลือก</p>
+            </section>
+        `;
+    }
+
+    const totalActive = Number(pharmacistOps.totalActive || 0);
+    const totalStaff = Number(pharmacistOps.totalStaff || 0);
+    const staffCoverageRate = pharmacistOps.staffCoverageRate ?? (totalStaff > 0 ? totalActive / totalStaff : 0);
+    const averageTransactions = Number(pharmacistOps.averageTransactionsPerPharmacist || 0);
+    const averageRevenue = Number(pharmacistOps.averageRevenuePerPharmacist || 0);
+    const memberDocumentedRate = Number(pharmacistOps.memberDocumentedRate || 0);
+    const documentedTransactions = Number(pharmacistOps.documentedTransactions || 0);
+    const unassignedTransactions = Number(pharmacistOps.unassignedTransactions || 0);
+    const controlledDispenses = Number(pharmacistOps.totalControlledDispenses || 0);
+    const averageUnits = Number(pharmacistOps.averageUnitsPerPharmacist || 0);
+
+    const cards = [
+        {
+            label: 'เภสัชกรที่มีธุรกรรม',
+            value: `${formatNumberDisplay(totalActive, 0)} คน`
+        },
+        {
+            label: 'อัตราครอบคลุมเจ้าหน้าที่',
+            value: totalStaff > 0
+                ? `${formatPercentDisplay(staffCoverageRate)} ของ ${formatNumberDisplay(totalStaff, 0)} คน`
+                : `${formatNumberDisplay(totalStaff, 0)} คน`
+        },
+        {
+            label: 'ธุรกรรมเฉลี่ยต่อเภสัชกร',
+            value: `${formatNumberDisplay(averageTransactions, 1)} บิล`
+        },
+        {
+            label: 'ยอดขายเฉลี่ยต่อเภสัชกร',
+            value: formatCurrencyDisplay(averageRevenue)
+        },
+        {
+            label: 'หน่วยสินค้าที่จ่ายเฉลี่ย',
+            value: `${formatNumberDisplay(averageUnits, 1)} หน่วย`
+        },
+        {
+            label: 'สัดส่วนบันทึกข้อมูลสมาชิก',
+            value: `${formatPercentDisplay(memberDocumentedRate)} (${formatNumberDisplay(documentedTransactions, 0)} บิล)`
+        },
+        {
+            label: 'รายการควบคุม/อันตรายที่จ่าย',
+            value: `${formatNumberDisplay(controlledDispenses, 0)} รายการ`
+        },
+        {
+            label: 'ธุรกรรมที่ไม่ระบุผู้ขาย',
+            value: `${formatNumberDisplay(unassignedTransactions, 0)} บิล`
+        }
+    ];
+
+    const topPharmacists = Array.isArray(pharmacistOps.topPharmacists) ? pharmacistOps.topPharmacists : [];
+    const byPharmacist = Array.isArray(pharmacistOps.byPharmacist) ? pharmacistOps.byPharmacist : [];
+    const activeRows = byPharmacist.filter(item => item.hasAssignment);
+    const unassignedRows = byPharmacist.filter(item => !item.hasAssignment);
+    const complianceAlerts = Array.isArray(pharmacistOps.complianceAlerts) ? pharmacistOps.complianceAlerts : [];
+    const inactiveStaff = Array.isArray(pharmacistOps.inactiveStaff) ? pharmacistOps.inactiveStaff : [];
+
+    const renderPharmacistCell = (item) => {
+        const name = escapeHtml(item.pharmacist || item.pharmacistId || '-');
+        const license = item.licenseNumber ? `<div class="text-xs text-slate-500">ใบอนุญาต ${escapeHtml(item.licenseNumber)}</div>` : '';
+        const position = item.position ? `<div class="text-xs text-slate-400">${escapeHtml(item.position)}</div>` : '';
+        return `<div class="font-medium text-slate-700">${name}</div>${license}${position}`;
+    };
+
+    let html = `
+        <section class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                <h3 class="text-lg font-bold text-slate-800">งานปฏิบัติการเภสัชกร</h3>
+                <p class="text-sm text-slate-500">ติดตามความพร้อมและภาระงานของทีมเภสัชกรในช่วงเวลาที่เลือก</p>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                ${cards.map(card => `
+                    <div class="p-4 bg-indigo-50 border border-indigo-100 rounded-lg">
+                        <p class="text-xs uppercase tracking-wide text-indigo-600">${card.label}</p>
+                        <p class="mt-2 text-xl font-bold text-slate-800">${card.value}</p>
+                    </div>
+                `).join('')}
+            </div>
+            <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 mt-6">
+                <div>
+                    <h4 class="font-semibold text-slate-700 mb-2">เภสัชกรที่ทำยอดสูงสุด</h4>
+                    ${topPharmacists.length === 0 ? `<p class="text-sm text-slate-500">ไม่มีธุรกรรมในช่วงเวลานี้</p>` : `
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm text-left text-slate-500">
+                                <thead class="text-xs uppercase bg-slate-50 text-slate-600">
+                                    <tr>
+                                        <th class="px-4 py-2">อันดับ</th>
+                                        <th class="px-4 py-2">เภสัชกร</th>
+                                        <th class="px-4 py-2">จำนวนบิล</th>
+                                        <th class="px-4 py-2">ยอดขาย</th>
+                                        <th class="px-4 py-2">สมาชิกที่ดูแล</th>
+                                        <th class="px-4 py-2">ควบคุม/อันตราย</th>
+                                        <th class="px-4 py-2">อัตราบันทึก</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${topPharmacists.map((item, index) => {
+                                        const controlCount = Number(item.dangerousTransactions || 0) + Number(item.controlledTransactions || 0);
+                                        return `
+                                            <tr class="border-b">
+                                                <td class="px-4 py-2">${index + 1}</td>
+                                                <td class="px-4 py-2">${renderPharmacistCell(item)}</td>
+                                                <td class="px-4 py-2">${formatNumberDisplay(item.transactions || 0, 0)}</td>
+                                                <td class="px-4 py-2">${formatCurrencyDisplay(item.revenue || 0)}</td>
+                                                <td class="px-4 py-2">${formatNumberDisplay(item.uniqueMembers || 0, 0)} คน</td>
+                                                <td class="px-4 py-2">${formatNumberDisplay(controlCount, 0)} รายการ</td>
+                                                <td class="px-4 py-2">${formatPercentDisplay(item.documentedRate || 0, 0)}</td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    `}
+                </div>
+                <div class="space-y-4">
+                    <div>
+                        <h4 class="font-semibold text-slate-700 mb-2">ประเด็นที่ต้องติดตาม</h4>
+                        ${complianceAlerts.length === 0
+                            ? `<p class="text-sm text-slate-500">ไม่พบประเด็นเร่งด่วน</p>`
+                            : `<ul class="list-disc list-inside text-sm text-amber-600 space-y-1">${complianceAlerts.map(alert => `<li>${escapeHtml(alert)}</li>`).join('')}</ul>`}
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-slate-700 mb-2">เจ้าหน้าที่ที่ยังไม่มีธุรกรรมในช่วงนี้</h4>
+                        ${inactiveStaff.length === 0
+                            ? `<p class="text-sm text-slate-500">เจ้าหน้าที่ทุกคนมีการบันทึกขายแล้ว</p>`
+                            : `<ul class="text-sm text-slate-600 space-y-1 max-h-44 overflow-y-auto pr-1">${inactiveStaff.slice(0, 12).map(staff => `
+                                    <li>
+                                        <span class="font-medium text-slate-700">${escapeHtml(staff.fullName || staff.staffId || '-')}</span>
+                                        ${staff.position ? `<span class="text-xs text-slate-500"> (${escapeHtml(staff.position)})</span>` : ''}
+                                        ${staff.licenseNumber ? `<div class="text-xs text-slate-400">ใบอนุญาต ${escapeHtml(staff.licenseNumber)}</div>` : ''}
+                                    </li>
+                                `).join('')}</ul>`}
+                    </div>
+                    ${unassignedRows.length === 0 ? '' : `
+                        <div class="border border-red-200 bg-red-50 rounded-lg p-3">
+                            <h5 class="font-semibold text-red-600 text-sm mb-1">รายการที่ไม่ระบุผู้ขาย</h5>
+                            <p class="text-xs text-red-600 leading-relaxed">
+                                พบ ${formatNumberDisplay(unassignedTransactions, 0)} ธุรกรรมที่ไม่มีการเลือกชื่อผู้ขายใน POS
+                                โปรดทบทวนขั้นตอนก่อนบันทึกการขาย
+                            </p>
+                        </div>
+                    `}
+                </div>
+            </div>
+            <div class="mt-6">
+                <h4 class="font-semibold text-slate-700 mb-2">สรุปรายเภสัชกร</h4>
+                ${activeRows.length === 0 ? `<p class="text-sm text-slate-500">ไม่มีข้อมูลการปฏิบัติงานของเภสัชกรในช่วงเวลานี้</p>` : `
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-slate-500">
+                            <thead class="text-xs uppercase bg-slate-50 text-slate-600">
+                                <tr>
+                                    <th class="px-4 py-2">เภสัชกร</th>
+                                    <th class="px-4 py-2">จำนวนบิล</th>
+                                    <th class="px-4 py-2">ยอดขาย</th>
+                                    <th class="px-4 py-2">ยอดเฉลี่ย/บิล</th>
+                                    <th class="px-4 py-2">จำนวนหน่วย</th>
+                                    <th class="px-4 py-2">สมาชิกที่บันทึก</th>
+                                    <th class="px-4 py-2">อัตราบันทึก</th>
+                                    <th class="px-4 py-2">ควบคุม/อันตราย</th>
+                                    <th class="px-4 py-2">ขายล่าสุด</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${activeRows.slice(0, 20).map(item => {
+                                    const controlCount = Number(item.dangerousTransactions || 0) + Number(item.controlledTransactions || 0);
+                                    return `
+                                        <tr class="border-b">
+                                            <td class="px-4 py-2">${renderPharmacistCell(item)}</td>
+                                            <td class="px-4 py-2">${formatNumberDisplay(item.transactions || 0, 0)} บิล</td>
+                                            <td class="px-4 py-2">${formatCurrencyDisplay(item.revenue || 0)}</td>
+                                            <td class="px-4 py-2">${formatCurrencyDisplay(item.avgTicket || 0)}</td>
+                                            <td class="px-4 py-2">${formatNumberDisplay(item.units || 0, 0)} หน่วย</td>
+                                            <td class="px-4 py-2">${formatNumberDisplay(item.uniqueMembers || 0, 0)} คน</td>
+                                            <td class="px-4 py-2">${formatPercentDisplay(item.documentedRate || 0, 0)}</td>
+                                            <td class="px-4 py-2">${formatNumberDisplay(controlCount, 0)} รายการ</td>
+                                            <td class="px-4 py-2">${formatThaiDateDisplay(item.lastSaleDate)}</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                        ${activeRows.length > 20 ? `<p class="text-xs text-slate-400 mt-2">แสดงเฉพาะ 20 รายการแรกจากทั้งหมด ${formatNumberDisplay(activeRows.length, 0)} รายการ</p>` : ''}
+                    </div>
+                `}
+            </div>
+        </section>
+    `;
+
+    return html;
 }
 
 function buildSalesSection(sales) {
@@ -3664,10 +3873,11 @@ function renderKpiReport(report, type) {
     }
 
     const sectionsMap = {
-        kpiAll: ['sales', 'inventory', 'thaiFda'],
+        kpiAll: ['sales', 'inventory', 'thaiFda', 'pharmacistOps'],
         kpiSales: ['sales'],
         kpiInventory: ['inventory'],
-        kpiThaiFda: ['thaiFda']
+        kpiThaiFda: ['thaiFda'],
+        kpiPharmacist: ['pharmacistOps']
     };
     const sections = sectionsMap[type] || sectionsMap.kpiAll;
     const meta = report.meta || {};
@@ -3687,6 +3897,9 @@ function renderKpiReport(report, type) {
     if (sections.includes('inventory')) {
         html += buildInventorySection(report.inventory);
     }
+    if (sections.includes('pharmacistOps')) {
+        html += buildPharmacistOpsSection(report.pharmacistOps, report.meta);
+    }
     if (sections.includes('thaiFda')) {
         html += buildThaiFdaSection(report.thaiFda);
     }
@@ -3705,7 +3918,8 @@ if (exportReportCsvBtn) {
             kpiAll: 'kpi',
             kpiSales: 'kpi-sales',
             kpiInventory: 'kpi-inventory',
-            kpiThaiFda: 'kpi-thai-fda'
+            kpiThaiFda: 'kpi-thai-fda',
+            kpiPharmacist: 'kpi-pharmacist'
         };
         const exportType = exportTypeMap[lastReportParams.type] || 'kpi';
         const periodParam = encodeURIComponent(lastReportParams.period || 'monthly');
@@ -4724,7 +4938,6 @@ document.addEventListener('DOMContentLoaded', checkAuth);
         </div>
         <div class="border-t border-emerald-500/50 mt-4 pt-4 text-center text-xs text-emerald-200">
             <p>&copy; 2025 Pharmacy Management System. สงวนลิขสิทธิ์ทุกประการ</p>
-            <p class="mt-1">English Name: Wirun Wetsiri</p>
         </div>
     </div>
 </footer>
