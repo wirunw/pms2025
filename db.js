@@ -99,7 +99,7 @@ db.serialize(() => {
   db.run(`
     CREATE TABLE IF NOT EXISTS Sales (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      saleId TEXT UNIQUE NOT NULL,
+      saleId TEXT NOT NULL,
       saleDate TEXT DEFAULT CURRENT_TIMESTAMP,
       memberId TEXT,
       pharmacistId TEXT,
@@ -131,6 +131,83 @@ db.serialize(() => {
       });
     }
   });
+
+  db.get(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'Sales'",
+    (schemaErr, row) => {
+      if (schemaErr || !row || !row.sql) {
+        if (schemaErr) {
+          console.error('ตรวจสอบโครงสร้างตาราง Sales ไม่สำเร็จ:', schemaErr.message);
+        }
+        return;
+      }
+
+      if (!row.sql.includes('saleId TEXT UNIQUE')) {
+        return;
+      }
+
+      console.warn('ตรวจพบคอลัมน์ saleId ที่มี UNIQUE constraint ในตาราง Sales กำลังปรับโครงสร้าง...');
+
+      db.serialize(() => {
+        db.run('PRAGMA foreign_keys = OFF');
+        db.run(
+          `CREATE TABLE IF NOT EXISTS Sales_migrated (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            saleId TEXT NOT NULL,
+            saleDate TEXT DEFAULT CURRENT_TIMESTAMP,
+            memberId TEXT,
+            pharmacistId TEXT,
+            pharmacist TEXT NOT NULL,
+            totalAmount REAL NOT NULL,
+            inventoryId TEXT NOT NULL,
+            quantitySold INTEGER NOT NULL,
+            pricePerUnit REAL NOT NULL,
+            drugId TEXT NOT NULL,
+            lotNumber TEXT NOT NULL,
+            FOREIGN KEY (inventoryId) REFERENCES Inventory (inventoryId),
+            FOREIGN KEY (drugId) REFERENCES Formulary (drugId)
+          )`
+        );
+
+        db.run(
+          `INSERT INTO Sales_migrated (
+            id, saleId, saleDate, memberId, pharmacistId, pharmacist, totalAmount,
+            inventoryId, quantitySold, pricePerUnit, drugId, lotNumber
+          )
+          SELECT
+            id, saleId, saleDate, memberId, pharmacistId, pharmacist, totalAmount,
+            inventoryId, quantitySold, pricePerUnit, drugId, lotNumber
+          FROM Sales`,
+          (copyErr) => {
+            if (copyErr) {
+              console.error('คัดลอกข้อมูลจาก Sales เดิมไม่สำเร็จ:', copyErr.message);
+              db.run('DROP TABLE IF EXISTS Sales_migrated');
+              db.run('PRAGMA foreign_keys = ON');
+              return;
+            }
+
+            db.run('DROP TABLE Sales', (dropErr) => {
+              if (dropErr) {
+                console.error('ลบตาราง Sales เดิมไม่สำเร็จ:', dropErr.message);
+                db.run('DROP TABLE IF EXISTS Sales_migrated');
+                db.run('PRAGMA foreign_keys = ON');
+                return;
+              }
+
+              db.run('ALTER TABLE Sales_migrated RENAME TO Sales', (renameErr) => {
+                if (renameErr) {
+                  console.error('เปลี่ยนชื่อตาราง Sales_migrated ไม่สำเร็จ:', renameErr.message);
+                } else {
+                  console.log('ปรับโครงสร้างตาราง Sales เพื่อเอา UNIQUE ออกจาก saleId เรียบร้อยแล้ว');
+                }
+                db.run('PRAGMA foreign_keys = ON');
+              });
+            });
+          }
+        );
+      });
+    }
+  );
 
   // สร้างตาราง Staff (เภสัชกร/เจ้าหน้าที่)
   db.run(`
