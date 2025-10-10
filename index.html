@@ -598,6 +598,7 @@
             <div class="bg-white p-6 rounded-lg shadow">
                 <h3 class="font-bold text-lg mb-4">เพิ่มสมาชิกใหม่</h3>
                 <form id="addMemberForm" class="space-y-4">
+                    <input type="hidden" id="editingMemberId">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <input type="text" id="memberFullName" placeholder="ชื่อ-นามสกุล" class="p-2 border rounded" required>
                         <input type="text" id="memberNationalID" placeholder="เลขบัตรประชาชน" class="p-2 border rounded">
@@ -605,7 +606,7 @@
                         <input type="tel" id="memberPhone" placeholder="เบอร์โทรศัพท์" class="p-2 border rounded">
                         <textarea id="memberDisease" placeholder="โรคประจำตัว" class="p-2 border rounded md:col-span-2" rows="2"></textarea>
                     </div>
-                    
+
                     <div>
                         <h4 class="font-bold mt-2 mb-2">ประวัติการแพ้ยา</h4>
                         <div id="allergies-container" class="space-y-2">
@@ -613,13 +614,23 @@
                         </div>
                     </div>
 
-                    <button type="submit" class="w-full btn-emerald">บันทึกสมาชิก</button>
+                    <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <button type="submit" id="saveMemberBtn" class="w-full sm:w-auto btn-emerald">บันทึกสมาชิก</button>
+                        <button type="button" id="cancelMemberEditBtn" class="w-full sm:w-auto px-4 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 hidden">ยกเลิกการแก้ไข</button>
+                    </div>
                 </form>
             </div>
             <div class="mt-6 bg-white p-6 rounded-lg shadow">
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="font-bold text-lg">รายชื่อสมาชิก</h3>
                     <button id="refreshMembersBtn" class="px-3 py-1 text-sm bg-slate-200 rounded-lg hover:bg-slate-300">Refresh</button>
+                </div>
+                <div id="memberSelectionToolbar" class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+                    <p id="memberSelectionInfo" class="text-sm text-slate-600">ยังไม่ได้เลือกรายการ</p>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button id="clearMemberSelectionBtn" class="px-3 py-1 text-sm bg-slate-200 rounded-lg hover:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed" disabled>ล้างการเลือก</button>
+                        <button id="deleteSelectedMembersBtn" class="px-3 py-1 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed" disabled>ลบสมาชิกที่เลือก</button>
+                    </div>
                 </div>
                 <div id="membersTable" class="overflow-x-auto"></div>
             </div>
@@ -655,9 +666,18 @@
                             <option value="ยาปฏิชีวนะ">ยาปฏิชีวนะ</option>
                             <option value="ยาแก้แพ้ ลดน้ำมูก แก้ไอ">ยาแก้แพ้ ลดน้ำมูก แก้ไอ</option>
                             <option value="ยาสำหรับระบบทางเดินอาหาร">ยาสำหรับระบบทางเดินอาหาร</option>
-                            <option value="ยาสำหรับโรคเรื้อรัง">ยาสำหรับโรคเรื้อรัง</option>
+                            <option value="ยาควบคุมความดันและโรคหัวใจ">ยาควบคุมความดันและโรคหัวใจ</option>
+                            <option value="ยารักษาเบาหวาน">ยารักษาเบาหวาน</option>
+                            <option value="ยาลดไขมันในเลือด">ยาลดไขมันในเลือด</option>
+                            <option value="ยาสำหรับระบบทางเดินหายใจ">ยาสำหรับระบบทางเดินหายใจ</option>
+                            <option value="ยาสำหรับระบบทางเดินปัสสาวะ">ยาสำหรับระบบทางเดินปัสสาวะ</option>
+                            <option value="ยาสำหรับสุขภาพสตรีและสูตินรีเวช">ยาสำหรับสุขภาพสตรีและสูตินรีเวช</option>
+                            <option value="ยาดูแลผิวหนังและแผล">ยาดูแลผิวหนังและแผล</option>
+                            <option value="ยาดูแลดวงตา">ยาดูแลดวงตา</option>
+                            <option value="ยาดูแลหู คอ จมูก">ยาดูแลหู คอ จมูก</option>
                             <option value="ยาใช้ภายนอก">ยาใช้ภายนอก</option>
                             <option value="วิตามินและแร่ธาตุ (ยา)">วิตามินและแร่ธาตุ (ยา)</option>
+                            <option value="ยาและเวชภัณฑ์สำหรับกรณีฉุกเฉิน">ยาและเวชภัณฑ์สำหรับกรณีฉุกเฉิน</option>
                         </optgroup>
                         <optgroup label="ผลิตภัณฑ์เสริมอาหาร">
                             <option value="เสริมภูมิคุ้มกัน">เสริมภูมิคุ้มกัน</option>
@@ -666,17 +686,27 @@
                             <option value="บำรุงสมองและความจำ">บำรุงสมองและความจำ</option>
                             <option value="ควบคุมน้ำหนัก">ควบคุมน้ำหนัก</option>
                             <option value="สุขภาพลำไส้และโปรไบโอติกส์">สุขภาพลำไส้และโปรไบโอติกส์</option>
+                            <option value="ดูแลสุขภาพผู้สูงอายุ">ดูแลสุขภาพผู้สูงอายุ</option>
+                            <option value="เสริมพลังงานและการออกกำลังกาย">เสริมพลังงานและการออกกำลังกาย</option>
                         </optgroup>
                         <optgroup label="เครื่องมือแพทย์">
                             <option value="อุปกรณ์ตรวจวัด">อุปกรณ์ตรวจวัด</option>
                             <option value="อุปกรณ์ทำแผลและปฐมพยาบาล">อุปกรณ์ทำแผลและปฐมพยาบาล</option>
                             <option value="อุปกรณ์พยุงร่างกาย">อุปกรณ์พยุงร่างกาย</option>
+                            <option value="อุปกรณ์ดูแลผู้ป่วยติดเตียง">อุปกรณ์ดูแลผู้ป่วยติดเตียง</option>
+                            <option value="อุปกรณ์ดูแลผู้ป่วยเรื้อรัง">อุปกรณ์ดูแลผู้ป่วยเรื้อรัง</option>
                         </optgroup>
                         <optgroup label="เครื่องสำอาง/เวชสำอาง">
                             <option value="ผลิตภัณฑ์ทำความสะอาด">ผลิตภัณฑ์ทำความสะอาด</option>
                             <option value="ผลิตภัณฑ์ให้ความชุ่มชื้น">ผลิตภัณฑ์ให้ความชุ่มชื้น</option>
                             <option value="ผลิตภัณฑ์สำหรับสิว">ผลิตภัณฑ์สำหรับสิว</option>
                             <option value="ผลิตภัณฑ์ป้องกันแสงแดด">ผลิตภัณฑ์ป้องกันแสงแดด</option>
+                            <option value="ผลิตภัณฑ์ดูแลช่องปาก">ผลิตภัณฑ์ดูแลช่องปาก</option>
+                            <option value="ผลิตภัณฑ์ดูแลเส้นผมและหนังศีรษะ">ผลิตภัณฑ์ดูแลเส้นผมและหนังศีรษะ</option>
+                        </optgroup>
+                        <optgroup label="ผลิตภัณฑ์สำหรับแม่และเด็ก">
+                            <option value="โภชนาการแม่ตั้งครรภ์และหลังคลอด">โภชนาการแม่ตั้งครรภ์และหลังคลอด</option>
+                            <option value="ผลิตภัณฑ์ดูแลทารกและเด็ก">ผลิตภัณฑ์ดูแลทารกและเด็ก</option>
                         </optgroup>
                         <option value="อื่นๆ">อื่นๆ</option>
                     </select>
@@ -781,6 +811,7 @@
             <div class="bg-white p-6 rounded-lg shadow">
                 <h3 class="font-bold text-lg mb-4">เพิ่มเจ้าหน้าที่ใหม่</h3>
                 <form id="addStaffForm" class="space-y-4">
+                    <input type="hidden" id="editingStaffId">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <input type="text" id="staffFullName" placeholder="ชื่อ-นามสกุล" class="p-2 border rounded" required>
                         <input type="text" id="staffLicenseNumber" placeholder="เลขที่ใบประกอบวิชาชีพ (ถ้ามี)" class="p-2 border rounded">
@@ -788,13 +819,23 @@
                         <input type="tel" id="staffPhone" placeholder="เบอร์โทรศัพท์" class="p-2 border rounded">
                         <input type="email" id="staffEmail" placeholder="อีเมล" class="p-2 border rounded md:col-span-2">
                     </div>
-                    <button type="submit" class="w-full btn-emerald">บันทึกเจ้าหน้าที่</button>
+                    <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <button type="submit" id="saveStaffBtn" class="w-full sm:w-auto btn-emerald">บันทึกเจ้าหน้าที่</button>
+                        <button type="button" id="cancelStaffEditBtn" class="w-full sm:w-auto px-4 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 hidden">ยกเลิกการแก้ไข</button>
+                    </div>
                 </form>
             </div>
             <div class="mt-6 bg-white p-6 rounded-lg shadow">
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="font-bold text-lg">รายชื่อเจ้าหน้าที่</h3>
                     <button id="refreshStaffsBtn" class="px-3 py-1 text-sm bg-slate-200 rounded-lg hover:bg-slate-300">Refresh</button>
+                </div>
+                <div id="staffSelectionToolbar" class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+                    <p id="staffSelectionInfo" class="text-sm text-slate-600">ยังไม่ได้เลือกรายการ</p>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button id="clearStaffSelectionBtn" class="px-3 py-1 text-sm bg-slate-200 rounded-lg hover:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed" disabled>ล้างการเลือก</button>
+                        <button id="deleteSelectedStaffsBtn" class="px-3 py-1 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed" disabled>ลบเจ้าหน้าที่ที่เลือก</button>
+                    </div>
                 </div>
                 <div id="staffsTable" class="overflow-x-auto"></div>
             </div>
@@ -977,6 +1018,10 @@ let stream;
 let currentDrugIdForPhoto = null;
 const imageUploadInput = document.getElementById('image-upload-input');
 
+let currentUserRole = null;
+let membersDataCache = [];
+let staffDataCache = [];
+
 // --- Barcode Scanner Modal ---
 const barcodeScannerModal = document.getElementById('barcode-scanner-modal');
 const barcodeVideo = document.getElementById('barcode-video');
@@ -1044,6 +1089,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const pageId = window.location.hash.substring(1) || 'dashboard';
     showPage(pageId);
     generateAllergyFields();
+    updateDrugSelectionUI();
+    updateMemberSelectionUI();
+    updateStaffSelectionUI();
 });
 
 // --- Custom Modals ---
@@ -1147,6 +1195,35 @@ async function apiPost(endpoint, payload) {
     } catch (error) {
         console.error(`API POST call failed for endpoint '${endpoint}':`, error);
         showCustomAlert(`เกิดข้อผิดพลาดในการส่งข้อมูล: ${error.message}`);
+        throw error;
+    } finally {
+        hideLoader();
+    }
+}
+
+async function apiPut(endpoint, payload = {}) {
+    if (!API_URL) {
+        showCustomAlert('กรุณาตั้งค่า API Server URL ในหน้า "ตั้งค่า"');
+        return Promise.reject('URL not configured');
+    }
+    showLoader();
+    try {
+        const token = localStorage.getItem('authToken');
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch(`${API_URL}/${endpoint}`, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return await response.json();
+    } catch (error) {
+        console.error(`API PUT call failed for endpoint '${endpoint}':`, error);
+        showCustomAlert(`เกิดข้อผิดพลาดในการอัปเดตข้อมูล: ${error.message}`);
         throw error;
     } finally {
         hideLoader();
@@ -1509,18 +1586,28 @@ function generateTopDrugsChart(topDrugs) {
 
 // --- Member Management (CRM) ---
 const addMemberForm = document.getElementById('addMemberForm');
+const saveMemberBtn = document.getElementById('saveMemberBtn');
 const membersTable = document.getElementById('membersTable');
 const refreshMembersBtn = document.getElementById('refreshMembersBtn');
+const memberSelectionToolbar = document.getElementById('memberSelectionToolbar');
+const memberSelectionInfo = document.getElementById('memberSelectionInfo');
+const deleteSelectedMembersBtn = document.getElementById('deleteSelectedMembersBtn');
+const clearMemberSelectionBtn = document.getElementById('clearMemberSelectionBtn');
+const cancelMemberEditBtn = document.getElementById('cancelMemberEditBtn');
+const editingMemberIdInput = document.getElementById('editingMemberId');
 
-function generateAllergyFields() {
+const selectedMemberIds = new Set();
+
+function generateAllergyFields(existingAllergies = []) {
     const container = document.getElementById('allergies-container');
     container.innerHTML = '';
     for (let i = 1; i <= 5; i++) {
         const div = document.createElement('div');
         div.className = 'grid grid-cols-1 md:grid-cols-2 gap-4';
+        const allergyEntry = existingAllergies[i - 1] || {};
         div.innerHTML = `
-            <input type="text" id="allergyGenericName${i}" placeholder="ชื่อสามัญยาที่แพ้ ${i}" class="p-2 border rounded">
-            <input type="text" id="allergyReaction${i}" placeholder="อาการที่พบ ${i}" class="p-2 border rounded">
+            <input type="text" id="allergyGenericName${i}" placeholder="ชื่อสามัญยาที่แพ้ ${i}" class="p-2 border rounded" value="${allergyEntry.genericName ? allergyEntry.genericName.replace(/"/g, '&quot;') : ''}">
+            <input type="text" id="allergyReaction${i}" placeholder="อาการที่พบ ${i}" class="p-2 border rounded" value="${allergyEntry.reaction ? allergyEntry.reaction.replace(/"/g, '&quot;') : ''}">
         `;
         container.appendChild(div);
     }
@@ -1529,11 +1616,58 @@ function generateAllergyFields() {
 async function loadMembers() {
     membersTable.innerHTML = '';
     try {
-        const members = await apiCall('members');
-        renderTable(membersTable, members);
+        membersDataCache = await apiCall('members');
+        renderMembersTableFromCache();
     } catch (e) {
         membersTable.innerHTML = `<p class="text-red-500">ไม่สามารถโหลดข้อมูลสมาชิกได้</p>`;
+        selectedMemberIds.clear();
+        updateMemberSelectionUI();
     }
+}
+
+function renderMembersTableFromCache() {
+    if (!Array.isArray(membersDataCache) || membersDataCache.length === 0) {
+        membersTable.innerHTML = `<p class="text-center text-slate-500">ไม่พบข้อมูลสมาชิก</p>`;
+        selectedMemberIds.clear();
+        updateMemberSelectionUI();
+        return;
+    }
+
+    const availableIds = new Set(membersDataCache.map(member => member.memberId));
+    Array.from(selectedMemberIds).forEach(id => {
+        if (!availableIds.has(id)) {
+            selectedMemberIds.delete(id);
+        }
+    });
+
+    const formattedMembers = membersDataCache.map(member => ({
+        ...member,
+        allergies: Array.isArray(member.allergies) && member.allergies.length > 0
+            ? member.allergies.map(item => `${item.genericName || '-'}${item.reaction ? ` (${item.reaction})` : ''}`).join('; ')
+            : '-'
+    }));
+
+    const memberActions = [
+        { label: 'แก้ไข', class: 'bg-amber-500 hover:bg-amber-600', handler: 'startMemberEdit', idField: 'memberId' }
+    ];
+    if (currentUserRole === 'admin') {
+        memberActions.push({ label: 'ลบ', class: 'bg-red-600 hover:bg-red-700', handler: 'deleteSingleMember', idField: 'memberId' });
+    }
+
+    const options = { actions: memberActions };
+    if (currentUserRole === 'admin') {
+        options.selectable = {
+            idField: 'memberId',
+            selectAllId: 'memberSelectAll',
+            onToggle: 'handleMemberSelectionChange',
+            onToggleAll: 'handleMemberSelectAll',
+            selectedIds: selectedMemberIds,
+            checkboxClass: 'member-selection-checkbox'
+        };
+    }
+
+    renderTable(membersTable, formattedMembers, null, options);
+    updateMemberSelectionUI();
 }
 
 addMemberForm.addEventListener('submit', async (e) => {
@@ -1559,14 +1693,187 @@ addMemberForm.addEventListener('submit', async (e) => {
         allergies: JSON.stringify(allergies)
     };
     try {
-        await apiPost('members', payload);
-        showCustomAlert('เพิ่มสมาชิกสำเร็จ!');
-        addMemberForm.reset();
-        loadMembers();
-    } catch (error) { /* Handled by apiPost */ } 
+        const editingId = editingMemberIdInput.value;
+        if (editingId) {
+            await apiPut(`members/${editingId}`, payload);
+            showCustomAlert('อัปเดตข้อมูลสมาชิกสำเร็จ!');
+        } else {
+            await apiPost('members', payload);
+            showCustomAlert('เพิ่มสมาชิกสำเร็จ!');
+        }
+        resetMemberForm();
+        selectedMemberIds.clear();
+        await loadMembers();
+    } catch (error) { /* Handled by apiPost */ }
     finally { btn.disabled = false; }
 });
 refreshMembersBtn.addEventListener('click', loadMembers);
+
+function resetMemberForm() {
+    addMemberForm.reset();
+    editingMemberIdInput.value = '';
+    if (saveMemberBtn) {
+        saveMemberBtn.textContent = 'บันทึกสมาชิก';
+    }
+    if (cancelMemberEditBtn) {
+        cancelMemberEditBtn.classList.add('hidden');
+    }
+    generateAllergyFields();
+}
+
+function startMemberEdit(memberId) {
+    const member = membersDataCache.find(m => m.memberId === memberId);
+    if (!member) return;
+
+    editingMemberIdInput.value = memberId;
+    document.getElementById('memberFullName').value = member.fullName || '';
+    document.getElementById('memberNationalID').value = member.nationalId || '';
+    document.getElementById('memberDob').value = member.dob || '';
+    document.getElementById('memberPhone').value = member.phone || '';
+    document.getElementById('memberDisease').value = member.disease || '';
+    generateAllergyFields(Array.isArray(member.allergies) ? member.allergies : []);
+
+    if (saveMemberBtn) {
+        saveMemberBtn.textContent = 'บันทึกการแก้ไขสมาชิก';
+    }
+    if (cancelMemberEditBtn) {
+        cancelMemberEditBtn.classList.remove('hidden');
+    }
+    showCustomAlert(`กำลังแก้ไขข้อมูลสมาชิก: ${member.fullName}`);
+}
+
+function cancelMemberEdit() {
+    resetMemberForm();
+}
+
+function handleMemberSelectionChange(checkbox) {
+    if (!checkbox || !checkbox.dataset?.id) return;
+    if (checkbox.checked) {
+        selectedMemberIds.add(checkbox.dataset.id);
+    } else {
+        selectedMemberIds.delete(checkbox.dataset.id);
+    }
+    updateMemberSelectionUI();
+}
+
+function handleMemberSelectAll(isChecked) {
+    const checkboxes = membersTable.querySelectorAll('input[data-role="drug-select"]');
+    checkboxes.forEach(cb => {
+        cb.checked = isChecked;
+        const id = cb.dataset.id;
+        if (!id) return;
+        if (isChecked) {
+            selectedMemberIds.add(id);
+        } else {
+            selectedMemberIds.delete(id);
+        }
+    });
+    updateMemberSelectionUI();
+}
+
+function updateMemberSelectionUI() {
+    const isAdmin = currentUserRole === 'admin';
+    if (memberSelectionToolbar) {
+        memberSelectionToolbar.classList.toggle('hidden', !isAdmin);
+    }
+
+    if (!isAdmin) {
+        selectedMemberIds.clear();
+        if (deleteSelectedMembersBtn) deleteSelectedMembersBtn.disabled = true;
+        if (clearMemberSelectionBtn) clearMemberSelectionBtn.disabled = true;
+        if (memberSelectionInfo) memberSelectionInfo.textContent = 'ยังไม่ได้เลือกรายการ';
+        return;
+    }
+
+    const count = selectedMemberIds.size;
+    if (memberSelectionInfo) {
+        memberSelectionInfo.textContent = count > 0 ? `เลือกแล้ว ${count} รายการ` : 'ยังไม่ได้เลือกรายการ';
+    }
+    if (deleteSelectedMembersBtn) {
+        deleteSelectedMembersBtn.disabled = count === 0;
+    }
+    if (clearMemberSelectionBtn) {
+        clearMemberSelectionBtn.disabled = count === 0;
+    }
+
+    const selectAllCheckbox = document.getElementById('memberSelectAll');
+    if (selectAllCheckbox) {
+        const checkboxes = membersTable.querySelectorAll('input[data-role="drug-select"]');
+        const total = checkboxes.length;
+        const selectedInView = Array.from(checkboxes).filter(cb => cb.checked).length;
+        selectAllCheckbox.checked = total > 0 && selectedInView === total;
+        selectAllCheckbox.indeterminate = selectedInView > 0 && selectedInView < total;
+    }
+}
+
+function clearMemberSelection() {
+    selectedMemberIds.clear();
+    const checkboxes = membersTable.querySelectorAll('input[data-role="drug-select"]');
+    checkboxes.forEach(cb => { cb.checked = false; });
+    updateMemberSelectionUI();
+}
+
+async function deleteSelectedMembers() {
+    if (selectedMemberIds.size === 0) {
+        showCustomAlert('กรุณาเลือกสมาชิกอย่างน้อย 1 รายการ');
+        return;
+    }
+
+    const confirmed = await showConfirmation(`ยืนยันการลบสมาชิก ${selectedMemberIds.size} รายการหรือไม่?`, 'ยืนยันการลบสมาชิก');
+    if (!confirmed) return;
+
+    if (deleteSelectedMembersBtn) deleteSelectedMembersBtn.disabled = true;
+    try {
+        const result = await apiDelete('members', { ids: Array.from(selectedMemberIds) });
+        const deleted = result?.deleted || [];
+        const blocked = result?.blocked || [];
+        selectedMemberIds.clear();
+        await loadMembers();
+
+        let message = '';
+        if (deleted.length > 0) {
+            message += `<p>ลบสมาชิกสำเร็จ ${deleted.length} รายการ</p>`;
+        }
+        if (blocked.length > 0) {
+            message += `<p class="mt-2 text-amber-600">ไม่สามารถลบได้ ${blocked.length} รายการ</p>`;
+        }
+        showCustomAlert(message || 'ดำเนินการเสร็จสิ้น');
+    } catch (error) {
+        /* handled by apiDelete */
+    } finally {
+        if (deleteSelectedMembersBtn) deleteSelectedMembersBtn.disabled = false;
+        updateMemberSelectionUI();
+    }
+}
+
+async function deleteSingleMember(memberId) {
+    if (!memberId) return;
+    const member = membersDataCache.find(m => m.memberId === memberId);
+    const name = member?.fullName || memberId;
+    const confirmed = await showConfirmation(`ยืนยันการลบสมาชิก ${name} หรือไม่?`, 'ยืนยันการลบสมาชิก');
+    if (!confirmed) return;
+
+    try {
+        await apiDelete('members', { ids: [memberId] });
+        selectedMemberIds.delete(memberId);
+        await loadMembers();
+        showCustomAlert('ลบสมาชิกเรียบร้อยแล้ว');
+    } catch (error) {
+        /* handled */
+    } finally {
+        updateMemberSelectionUI();
+    }
+}
+
+if (deleteSelectedMembersBtn) {
+    deleteSelectedMembersBtn.addEventListener('click', deleteSelectedMembers);
+}
+if (clearMemberSelectionBtn) {
+    clearMemberSelectionBtn.addEventListener('click', clearMemberSelection);
+}
+if (cancelMemberEditBtn) {
+    cancelMemberEditBtn.addEventListener('click', cancelMemberEdit);
+}
 
 // --- Drug Formulary & Camera ---
 const addDrugFormEl = document.getElementById('addDrugForm');
@@ -1616,17 +1923,21 @@ function renderFormularyTableFromCache() {
         }
     });
 
-    renderTable(formularyTable, formularyDataCache, null, {
-        selectable: {
+    const options = { actions: formularyActions };
+    if (currentUserRole === 'admin') {
+        options.selectable = {
             idField: 'drugId',
             selectAllId: 'drugSelectAll',
             onToggle: 'handleDrugSelectionChange',
             onToggleAll: 'handleDrugSelectAll',
             selectedIds: selectedDrugIds,
             checkboxClass: 'drug-selection-checkbox'
-        },
-        actions: formularyActions
-    });
+        };
+    } else {
+        selectedDrugIds.clear();
+    }
+
+    renderTable(formularyTable, formularyDataCache, null, options);
 
     updateDrugSelectionUI();
 }
@@ -1658,15 +1969,26 @@ function handleDrugSelectAll(isChecked) {
 }
 
 function updateDrugSelectionUI() {
+    const isAdmin = currentUserRole === 'admin';
+    if (!isAdmin) {
+        selectedDrugIds.clear();
+    }
+
     const count = selectedDrugIds.size;
     if (drugSelectionInfo) {
-        drugSelectionInfo.textContent = count > 0 ? `เลือกแล้ว ${count} รายการ` : 'ยังไม่ได้เลือกรายการ';
+        if (isAdmin) {
+            drugSelectionInfo.textContent = count > 0 ? `เลือกแล้ว ${count} รายการ` : 'ยังไม่ได้เลือกรายการ';
+        } else {
+            drugSelectionInfo.textContent = 'สิทธิ์ลบรายการยาเฉพาะผู้ดูแลระบบ';
+        }
     }
     if (deleteSelectedDrugsBtn) {
         deleteSelectedDrugsBtn.disabled = count === 0;
+        deleteSelectedDrugsBtn.classList.toggle('hidden', !isAdmin);
     }
     if (clearDrugSelectionBtn) {
         clearDrugSelectionBtn.disabled = count === 0;
+        clearDrugSelectionBtn.classList.toggle('hidden', !isAdmin);
     }
     const selectAllCheckbox = document.getElementById('drugSelectAll');
     if (selectAllCheckbox) {
@@ -2637,17 +2959,66 @@ closeBarcodeScannerBtn.addEventListener('click', closeBarcodeScanner);
 
 // --- Staff Management ---
 const addStaffForm = document.getElementById('addStaffForm');
+const saveStaffBtn = document.getElementById('saveStaffBtn');
 const staffsTable = document.getElementById('staffsTable');
 const refreshStaffsBtn = document.getElementById('refreshStaffsBtn');
+const staffSelectionToolbar = document.getElementById('staffSelectionToolbar');
+const staffSelectionInfo = document.getElementById('staffSelectionInfo');
+const deleteSelectedStaffsBtn = document.getElementById('deleteSelectedStaffsBtn');
+const clearStaffSelectionBtn = document.getElementById('clearStaffSelectionBtn');
+const cancelStaffEditBtn = document.getElementById('cancelStaffEditBtn');
+const editingStaffIdInput = document.getElementById('editingStaffId');
+
+const selectedStaffIds = new Set();
 
 async function loadStaffs() {
     staffsTable.innerHTML = '';
     try {
-        const staffs = await apiCall('staffs');
-        renderTable(staffsTable, staffs);
+        staffDataCache = await apiCall('staffs');
+        renderStaffsTableFromCache();
     } catch (e) {
         staffsTable.innerHTML = `<p class="text-red-500">ไม่สามารถโหลดข้อมูลเจ้าหน้าที่ได้</p>`;
+        selectedStaffIds.clear();
+        updateStaffSelectionUI();
     }
+}
+
+function renderStaffsTableFromCache() {
+    if (!Array.isArray(staffDataCache) || staffDataCache.length === 0) {
+        staffsTable.innerHTML = `<p class="text-center text-slate-500">ไม่พบข้อมูลเจ้าหน้าที่</p>`;
+        selectedStaffIds.clear();
+        updateStaffSelectionUI();
+        return;
+    }
+
+    const availableIds = new Set(staffDataCache.map(staff => staff.staffId));
+    Array.from(selectedStaffIds).forEach(id => {
+        if (!availableIds.has(id)) {
+            selectedStaffIds.delete(id);
+        }
+    });
+
+    const staffActions = [
+        { label: 'แก้ไข', class: 'bg-amber-500 hover:bg-amber-600', handler: 'startStaffEdit', idField: 'staffId' }
+    ];
+    if (currentUserRole === 'admin') {
+        staffActions.push({ label: 'ลบ', class: 'bg-red-600 hover:bg-red-700', handler: 'deleteSingleStaff', idField: 'staffId' });
+    }
+
+    const options = { actions: staffActions };
+    if (currentUserRole === 'admin') {
+        options.selectable = {
+            idField: 'staffId',
+            selectAllId: 'staffSelectAll',
+            onToggle: 'handleStaffSelectionChange',
+            onToggleAll: 'handleStaffSelectAll',
+            selectedIds: selectedStaffIds,
+            checkboxClass: 'staff-selection-checkbox'
+        };
+    }
+
+    renderTable(staffsTable, staffDataCache, null, options);
+    updateStaffSelectionUI();
 }
 
 addStaffForm.addEventListener('submit', async (e) => {
@@ -2663,14 +3034,185 @@ addStaffForm.addEventListener('submit', async (e) => {
         email: document.getElementById('staffEmail').value
     };
     try {
-        await apiPost('staffs', payload);
-        showCustomAlert('เพิ่มเจ้าหน้าที่สำเร็จ!');
-        addStaffForm.reset();
-        loadStaffs();
-    } catch (error) { /* Handled by apiPost */ } 
+        const editingId = editingStaffIdInput.value;
+        if (editingId) {
+            await apiPut(`staffs/${editingId}`, payload);
+            showCustomAlert('อัปเดตข้อมูลเจ้าหน้าที่สำเร็จ!');
+        } else {
+            await apiPost('staffs', payload);
+            showCustomAlert('เพิ่มเจ้าหน้าที่สำเร็จ!');
+        }
+        resetStaffForm();
+        selectedStaffIds.clear();
+        await loadStaffs();
+    } catch (error) { /* Handled by apiPost */ }
     finally { btn.disabled = false; }
 });
 refreshStaffsBtn.addEventListener('click', loadStaffs);
+
+function resetStaffForm() {
+    addStaffForm.reset();
+    editingStaffIdInput.value = '';
+    if (saveStaffBtn) {
+        saveStaffBtn.textContent = 'บันทึกเจ้าหน้าที่';
+    }
+    if (cancelStaffEditBtn) {
+        cancelStaffEditBtn.classList.add('hidden');
+    }
+}
+
+function startStaffEdit(staffId) {
+    const staff = staffDataCache.find(s => s.staffId === staffId);
+    if (!staff) return;
+
+    editingStaffIdInput.value = staffId;
+    document.getElementById('staffFullName').value = staff.fullName || '';
+    document.getElementById('staffLicenseNumber').value = staff.licenseNumber || '';
+    document.getElementById('staffPosition').value = staff.position || '';
+    document.getElementById('staffPhone').value = staff.phone || '';
+    document.getElementById('staffEmail').value = staff.email || '';
+
+    if (saveStaffBtn) {
+        saveStaffBtn.textContent = 'บันทึกการแก้ไขเจ้าหน้าที่';
+    }
+    if (cancelStaffEditBtn) {
+        cancelStaffEditBtn.classList.remove('hidden');
+    }
+    showCustomAlert(`กำลังแก้ไขข้อมูลเจ้าหน้าที่: ${staff.fullName}`);
+}
+
+function cancelStaffEdit() {
+    resetStaffForm();
+}
+
+function handleStaffSelectionChange(checkbox) {
+    if (!checkbox || !checkbox.dataset?.id) return;
+    if (checkbox.checked) {
+        selectedStaffIds.add(checkbox.dataset.id);
+    } else {
+        selectedStaffIds.delete(checkbox.dataset.id);
+    }
+    updateStaffSelectionUI();
+}
+
+function handleStaffSelectAll(isChecked) {
+    const checkboxes = staffsTable.querySelectorAll('input[data-role="drug-select"]');
+    checkboxes.forEach(cb => {
+        cb.checked = isChecked;
+        const id = cb.dataset.id;
+        if (!id) return;
+        if (isChecked) {
+            selectedStaffIds.add(id);
+        } else {
+            selectedStaffIds.delete(id);
+        }
+    });
+    updateStaffSelectionUI();
+}
+
+function updateStaffSelectionUI() {
+    const isAdmin = currentUserRole === 'admin';
+    if (staffSelectionToolbar) {
+        staffSelectionToolbar.classList.toggle('hidden', !isAdmin);
+    }
+
+    if (!isAdmin) {
+        selectedStaffIds.clear();
+        if (deleteSelectedStaffsBtn) deleteSelectedStaffsBtn.disabled = true;
+        if (clearStaffSelectionBtn) clearStaffSelectionBtn.disabled = true;
+        if (staffSelectionInfo) staffSelectionInfo.textContent = 'ยังไม่ได้เลือกรายการ';
+        return;
+    }
+
+    const count = selectedStaffIds.size;
+    if (staffSelectionInfo) {
+        staffSelectionInfo.textContent = count > 0 ? `เลือกแล้ว ${count} รายการ` : 'ยังไม่ได้เลือกรายการ';
+    }
+    if (deleteSelectedStaffsBtn) {
+        deleteSelectedStaffsBtn.disabled = count === 0;
+    }
+    if (clearStaffSelectionBtn) {
+        clearStaffSelectionBtn.disabled = count === 0;
+    }
+
+    const selectAllCheckbox = document.getElementById('staffSelectAll');
+    if (selectAllCheckbox) {
+        const checkboxes = staffsTable.querySelectorAll('input[data-role="drug-select"]');
+        const total = checkboxes.length;
+        const selectedInView = Array.from(checkboxes).filter(cb => cb.checked).length;
+        selectAllCheckbox.checked = total > 0 && selectedInView === total;
+        selectAllCheckbox.indeterminate = selectedInView > 0 && selectedInView < total;
+    }
+}
+
+function clearStaffSelection() {
+    selectedStaffIds.clear();
+    const checkboxes = staffsTable.querySelectorAll('input[data-role="drug-select"]');
+    checkboxes.forEach(cb => { cb.checked = false; });
+    updateStaffSelectionUI();
+}
+
+async function deleteSelectedStaffs() {
+    if (selectedStaffIds.size === 0) {
+        showCustomAlert('กรุณาเลือกเจ้าหน้าที่อย่างน้อย 1 รายการ');
+        return;
+    }
+
+    const confirmed = await showConfirmation(`ยืนยันการลบเจ้าหน้าที่ ${selectedStaffIds.size} รายการหรือไม่?`, 'ยืนยันการลบเจ้าหน้าที่');
+    if (!confirmed) return;
+
+    if (deleteSelectedStaffsBtn) deleteSelectedStaffsBtn.disabled = true;
+    try {
+        const result = await apiDelete('staffs', { ids: Array.from(selectedStaffIds) });
+        const deleted = result?.deleted || [];
+        const blocked = result?.blocked || [];
+        selectedStaffIds.clear();
+        await loadStaffs();
+
+        let message = '';
+        if (deleted.length > 0) {
+            message += `<p>ลบเจ้าหน้าที่สำเร็จ ${deleted.length} รายการ</p>`;
+        }
+        if (blocked.length > 0) {
+            message += `<p class="mt-2 text-amber-600">ไม่สามารถลบได้ ${blocked.length} รายการ</p>`;
+        }
+        showCustomAlert(message || 'ดำเนินการเสร็จสิ้น');
+    } catch (error) {
+        /* handled */
+    } finally {
+        if (deleteSelectedStaffsBtn) deleteSelectedStaffsBtn.disabled = false;
+        updateStaffSelectionUI();
+    }
+}
+
+async function deleteSingleStaff(staffId) {
+    if (!staffId) return;
+    const staff = staffDataCache.find(s => s.staffId === staffId);
+    const name = staff?.fullName || staffId;
+    const confirmed = await showConfirmation(`ยืนยันการลบเจ้าหน้าที่ ${name} หรือไม่?`, 'ยืนยันการลบเจ้าหน้าที่');
+    if (!confirmed) return;
+
+    try {
+        await apiDelete('staffs', { ids: [staffId] });
+        selectedStaffIds.delete(staffId);
+        await loadStaffs();
+        showCustomAlert('ลบเจ้าหน้าที่เรียบร้อยแล้ว');
+    } catch (error) {
+        /* handled */
+    } finally {
+        updateStaffSelectionUI();
+    }
+}
+
+if (deleteSelectedStaffsBtn) {
+    deleteSelectedStaffsBtn.addEventListener('click', deleteSelectedStaffs);
+}
+if (clearStaffSelectionBtn) {
+    clearStaffSelectionBtn.addEventListener('click', clearStaffSelection);
+}
+if (cancelStaffEditBtn) {
+    cancelStaffEditBtn.addEventListener('click', cancelStaffEdit);
+}
 
 // --- Login System ---
 const loginModal = document.getElementById('loginModal');
@@ -2753,6 +3295,7 @@ async function loadUserProfile() {
 
 // อัปเดต UI ตามข้อมูลผู้ใช้งาน
 function updateUIForUser(user) {
+    currentUserRole = user.role || 'user';
     // ซ่อน/แสดงเมนูตามบทบาท
     const adminUserManagement = document.getElementById('adminUserManagement');
     if (user.role === 'admin') {
@@ -2768,7 +3311,20 @@ function updateUIForUser(user) {
             el.classList.add('hidden');
         });
     }
-    
+
+    updateDrugSelectionUI();
+    updateMemberSelectionUI();
+    updateStaffSelectionUI();
+    if (typeof renderFormularyTableFromCache === 'function') {
+        renderFormularyTableFromCache();
+    }
+    if (typeof renderMembersTableFromCache === 'function') {
+        renderMembersTableFromCache();
+    }
+    if (typeof renderStaffsTableFromCache === 'function') {
+        renderStaffsTableFromCache();
+    }
+
     // อัปเดตชื่อผู้ใช้งานใน header
     const existingUserIndicator = document.querySelector('.user-indicator');
     if (!existingUserIndicator) {
@@ -2804,7 +3360,12 @@ function logout() {
     loginModal.classList.remove('hidden');
     document.querySelectorAll('.page, header, main').forEach(el => el.style.display = 'none');
     selectedDrugIds.clear();
+    selectedMemberIds.clear();
+    selectedStaffIds.clear();
+    currentUserRole = null;
     updateDrugSelectionUI();
+    updateMemberSelectionUI();
+    updateStaffSelectionUI();
 }
 
 // --- User Management ---

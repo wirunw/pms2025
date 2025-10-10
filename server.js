@@ -313,6 +313,9 @@ app.post('/api/drugs', authenticateToken, async (req, res) => {
 });
 
 app.delete('/api/drugs', authenticateToken, async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถลบรายการยาได้' });
+  }
   const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
   const uniqueIds = [...new Set(ids.filter(id => typeof id === 'string' && id.trim() !== ''))];
 
@@ -372,6 +375,109 @@ app.delete('/api/drugs', authenticateToken, async (req, res) => {
       }
     }
     console.error('Delete drugs error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/members/:memberId', authenticateToken, async (req, res) => {
+  try {
+    const memberId = req.params.memberId;
+    const existing = await runQuery('SELECT memberId, fullName FROM Members WHERE memberId = ?', [memberId]);
+
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'ไม่พบสมาชิกที่ต้องการแก้ไข' });
+    }
+
+    const payload = req.body || {};
+    await runStatement(
+      `UPDATE Members
+       SET fullName = ?, nationalId = ?, dob = ?, phone = ?, allergies = ?, disease = ?
+       WHERE memberId = ?`,
+      [
+        payload.fullName,
+        payload.nationalId,
+        payload.dob,
+        payload.phone,
+        payload.allergies,
+        payload.disease,
+        memberId
+      ]
+    );
+
+    res.json({ status: 'success' });
+    await logActivity('MEMBER_UPDATE', `แก้ไขข้อมูลสมาชิก ${payload.fullName || memberId}`, {
+      entity: 'Member',
+      entityId: memberId,
+      performedBy: req.user?.username || null
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/members', authenticateToken, async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถลบสมาชิกได้' });
+  }
+
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  const uniqueIds = [...new Set(ids.filter(id => typeof id === 'string' && id.trim() !== ''))];
+
+  if (uniqueIds.length === 0) {
+    return res.status(400).json({ error: 'กรุณาเลือกรายการสมาชิกที่ต้องการลบอย่างน้อย 1 รายการ' });
+  }
+
+  const deleted = [];
+  const blocked = [];
+  let inTransaction = false;
+
+  try {
+    await runStatement('BEGIN TRANSACTION');
+    inTransaction = true;
+
+    for (const memberId of uniqueIds) {
+      const memberRecords = await runQuery('SELECT memberId, fullName FROM Members WHERE memberId = ?', [memberId]);
+      if (memberRecords.length === 0) {
+        blocked.push({ memberId, reason: 'ไม่พบข้อมูลสมาชิกในระบบ' });
+        continue;
+      }
+
+      const [{ fullName }] = memberRecords;
+      const salesUsage = await runQuery('SELECT COUNT(*) as count FROM Sales WHERE memberId = ?', [memberId]);
+      const salesCount = salesUsage[0]?.count || 0;
+
+      if (salesCount > 0) {
+        blocked.push({ memberId, fullName, reason: `มีประวัติการซื้อ ${salesCount} รายการ` });
+        continue;
+      }
+
+      const result = await runStatement('DELETE FROM Members WHERE memberId = ?', [memberId]);
+
+      if (result.changes > 0) {
+        deleted.push({ memberId, fullName });
+        await logActivity('MEMBER_DELETE', `ลบสมาชิก ${fullName || memberId}`, {
+          entity: 'Member',
+          entityId: memberId,
+          performedBy: req.user?.username || null
+        });
+      } else {
+        blocked.push({ memberId, fullName, reason: 'ไม่สามารถลบสมาชิกได้' });
+      }
+    }
+
+    await runStatement('COMMIT');
+    inTransaction = false;
+
+    res.json({ deleted, blocked });
+  } catch (error) {
+    if (inTransaction) {
+      try {
+        await runStatement('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Rollback error:', rollbackError.message);
+      }
+    }
+    console.error('Delete members error:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -553,9 +659,14 @@ app.post('/api/sales', authenticateToken, async (req, res) => {
   }
 });
 
-// สร้าง route สำหรับหน้าหลัก
+// สร้าง route สำหรับหน้าหลักให้ใช้ไฟล์เดียวกับที่พัฒนา
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index_sqlite.html'));
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// รองรับเส้นทางเดิมสำหรับ index_sqlite โดยเปลี่ยนไปใช้ไฟล์หลัก
+app.get('/index_sqlite.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // Middleware สำหรับจัดการ error กลาง
@@ -623,6 +734,100 @@ app.post('/api/staffs', authenticateToken, async (req, res) => {
       performedBy: req.user?.username || null
     });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/staffs/:staffId', authenticateToken, async (req, res) => {
+  try {
+    const staffId = req.params.staffId;
+    const existing = await runQuery('SELECT staffId, fullName FROM Staff WHERE staffId = ?', [staffId]);
+
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'ไม่พบเจ้าหน้าที่ที่ต้องการแก้ไข' });
+    }
+
+    const payload = req.body || {};
+    await runStatement(
+      `UPDATE Staff
+       SET fullName = ?, licenseNumber = ?, position = ?, phone = ?, email = ?
+       WHERE staffId = ?`,
+      [
+        payload.fullName,
+        payload.licenseNumber,
+        payload.position,
+        payload.phone,
+        payload.email,
+        staffId
+      ]
+    );
+
+    res.json({ status: 'success' });
+    await logActivity('STAFF_UPDATE', `แก้ไขข้อมูลเจ้าหน้าที่ ${payload.fullName || staffId}`, {
+      entity: 'Staff',
+      entityId: staffId,
+      performedBy: req.user?.username || null
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/staffs', authenticateToken, async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถลบเจ้าหน้าที่ได้' });
+  }
+
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  const uniqueIds = [...new Set(ids.filter(id => typeof id === 'string' && id.trim() !== ''))];
+
+  if (uniqueIds.length === 0) {
+    return res.status(400).json({ error: 'กรุณาเลือกรายการเจ้าหน้าที่ที่ต้องการลบอย่างน้อย 1 รายการ' });
+  }
+
+  const deleted = [];
+  const blocked = [];
+  let inTransaction = false;
+
+  try {
+    await runStatement('BEGIN TRANSACTION');
+    inTransaction = true;
+
+    for (const staffId of uniqueIds) {
+      const staffRecords = await runQuery('SELECT staffId, fullName FROM Staff WHERE staffId = ?', [staffId]);
+      if (staffRecords.length === 0) {
+        blocked.push({ staffId, reason: 'ไม่พบข้อมูลเจ้าหน้าที่ในระบบ' });
+        continue;
+      }
+
+      const [{ fullName }] = staffRecords;
+      const result = await runStatement('DELETE FROM Staff WHERE staffId = ?', [staffId]);
+
+      if (result.changes > 0) {
+        deleted.push({ staffId, fullName });
+        await logActivity('STAFF_DELETE', `ลบเจ้าหน้าที่ ${fullName || staffId}`, {
+          entity: 'Staff',
+          entityId: staffId,
+          performedBy: req.user?.username || null
+        });
+      } else {
+        blocked.push({ staffId, fullName, reason: 'ไม่สามารถลบเจ้าหน้าที่ได้' });
+      }
+    }
+
+    await runStatement('COMMIT');
+    inTransaction = false;
+
+    res.json({ deleted, blocked });
+  } catch (error) {
+    if (inTransaction) {
+      try {
+        await runStatement('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Rollback error:', rollbackError.message);
+      }
+    }
+    console.error('Delete staffs error:', error);
     res.status(500).json({ error: error.message });
   }
 });
