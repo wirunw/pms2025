@@ -1199,7 +1199,7 @@ async function loadDashboard(period) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
         
-        const data = await apiCall(`dashboard/${period}`, {}, false, { signal: controller.signal });
+        const data = await apiCall(`dashboard/${period}`, {}, true, { signal: controller.signal });
         clearTimeout(timeoutId);
         
         // Update dashboard metrics
