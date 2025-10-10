@@ -1,12 +1,21 @@
 const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('./pharmacy.db');
+const bcrypt = require('bcryptjs');
+const path = require('path');
+
+const dbPath = process.env.DATABASE_URL || path.resolve(__dirname, 'pharmacy.db');
+const db = new sqlite3.Database(dbPath);
 
 db.serialize(() => {
   // สร้างบัญชี admin
-  const stmt = db.prepare(`INSERT INTO Users (username, password, fullName, role) VALUES (?, ?, ?, ?)`);
-  stmt.run(['admin', 'admin123', 'Administrator', 'admin'], function(err) {
+  const hashedPassword = bcrypt.hashSync('admin123', 10);
+  const stmt = db.prepare(`INSERT INTO Users (username, password, fullName, role, dateModified) VALUES (?, ?, ?, ?, ?)`);
+  stmt.run(['admin', hashedPassword, 'Administrator', 'admin', new Date().toISOString()], function(err) {
     if (err) {
-      console.error('เกิดข้อผิดพลาด:', err.message);
+      if (err.code === 'SQLITE_CONSTRAINT') {
+        console.log('บัญชี admin มีอยู่แล้ว');
+      } else {
+        console.error('เกิดข้อผิดพลาด:', err.message);
+      }
     } else {
       console.log('สร้างบัญชี admin เรียบร้อยแล้ว');
       console.log('Username: admin');
